@@ -1,0 +1,56 @@
+appId: com.theeva.vpn
+productName: EVA VPN
+copyright: theeva.ai
+artifactName: EVA-VPN-${version}-${arch}.${ext}
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - src/**/*
+  - package.json
+  - build/icon.png
+  - build/tray-on.png
+  - build/tray-off.png
+  - "!**/*.map"
+
+extraResources:
+  - from: core
+    to: core
+    filter:
+      - "**/*"
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  icon: build/icon.ico
+  # Туннельный режим создаёт сетевой адаптер — Windows требует прав администратора
+  requestedExecutionLevel: requireAdministrator
+
+nsis:
+  # карта блоков нужна только докачке обновлений, а автообновления у нас нет
+  differentialPackage: false
+  oneClick: false
+  perMachine: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: EVA VPN
+  deleteAppDataOnUninstall: false
+  include: build/installer.nsh
+
+portable:
+  artifactName: EVA-VPN-${version}-portable.exe
+
+publish:
+  provider: github
+  owner: theEVAai
+  repo: EVA-VPN
+  releaseType: release
+  # в релизе только установщики: манифест автообновления не публикуем,
+  # пока в приложении нет самого автообновления
+  publishAutoUpdate: false

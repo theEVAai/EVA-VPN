@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; font-src 'self';" />
+  <title>VPN.THEEVA.AI</title>
+  <link rel="stylesheet" href="fonts.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- фоновая геометрия в духе постера EVA -->
+    <svg class="deco" viewBox="0 0 360 660" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <g class="deco-blue">
+        <path d="M0 660 L0 578 L82 660 Z" />
+        <path d="M360 44 L360 118 L286 44 Z" />
+        <rect x="353" y="238" width="7" height="86" />
+      </g>
+      <g class="deco-line">
+        <path d="M0 128 L128 0" />
+        <path d="M0 156 L156 0" />
+        <path d="M236 660 L360 536" />
+      </g>
+      <g class="deco-cream">
+        <rect x="330" y="150" width="26" height="3" />
+        <rect x="330" y="160" width="14" height="3" />
+        <rect x="12" y="452" width="3" height="12" />
+        <rect x="12" y="470" width="3" height="12" />
+        <rect x="12" y="488" width="3" height="12" />
+      </g>
+    </svg>
+    <div class="grain"></div>
+
+    <div class="titlebar">
+      <div class="drag"></div>
+      <button class="wbtn" id="btnMin" title="Свернуть" aria-label="Свернуть">
+        <svg viewBox="0 0 12 12"><path d="M2 6h8" /></svg>
+      </button>
+      <button class="wbtn danger" id="btnClose" title="Закрыть" aria-label="Закрыть">
+        <svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" /></svg>
+      </button>
+    </div>
+
+    <header class="topbar">
+      <button class="iconbtn" id="btnMenu" aria-label="Меню">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+      </button>
+
+      <div class="wordmark">VPN.<span class="blue">THEEVA</span>.AI</div>
+
+      <button class="iconbtn" id="btnShare" aria-label="Поделиться ключом">
+        <svg viewBox="0 0 24 24">
+          <circle cx="18" cy="5" r="2.6" /><circle cx="6" cy="12" r="2.6" /><circle cx="18" cy="19" r="2.6" />
+          <path d="M8.3 10.8l7.4-4.3M8.3 13.2l7.4 4.3" />
+        </svg>
+      </button>
+    </header>
+
+    <div class="strip">
+      <span class="tick" id="stripMode">// ТУННЕЛЬ</span>
+      <span class="tick" id="stripGuard">// ЗАЩИТА ВЫКЛ</span>
+      <span class="tick v3">V3.0</span>
+    </div>
+
+    <main class="stage">
+      <button class="heart" id="btnPower" aria-label="Включить VPN">
+        <svg viewBox="0 0 120 112" class="hsvg">
+          <defs>
+            <clipPath id="innerClip">
+              <path d="M60 96 C60 96 17 70 17 41 C17 24 30 14 43 14 C51 14 57 18 60 23 C63 18 69 14 77 14 C90 14 103 24 103 41 C103 70 60 96 60 96 Z" />
+            </clipPath>
+          </defs>
+
+          <path class="rip rip1" d="M60 104 C60 104 8 74 8 39 C8 19 24 6 41 6 C51 6 57 11 60 17 C63 11 69 6 79 6 C96 6 112 19 112 39 C112 74 60 104 60 104 Z" />
+          <path class="rip rip2" d="M60 104 C60 104 8 74 8 39 C8 19 24 6 41 6 C51 6 57 11 60 17 C63 11 69 6 79 6 C96 6 112 19 112 39 C112 74 60 104 60 104 Z" />
+
+          <g class="beat">
+            <path class="h-outer" d="M60 104 C60 104 8 74 8 39 C8 19 24 6 41 6 C51 6 57 11 60 17 C63 11 69 6 79 6 C96 6 112 19 112 39 C112 74 60 104 60 104 Z" />
+            <path class="h-inner" d="M60 96 C60 96 17 70 17 41 C17 24 30 14 43 14 C51 14 57 18 60 23 C63 18 69 14 77 14 C90 14 103 24 103 41 C103 70 60 96 60 96 Z" />
+            <g clip-path="url(#innerClip)" class="gloss">
+              <rect x="24" y="-30" width="9" height="160" transform="rotate(35 60 56)" />
+              <rect x="38" y="-30" width="4" height="160" transform="rotate(35 60 56)" />
+            </g>
+            <g class="keyhole">
+              <circle cx="60" cy="45" r="11" />
+              <path d="M55.5 52 L52 70 h16 l-3.5 -18 Z" />
+            </g>
+            <g class="keyin" aria-hidden="true">
+              <circle cx="60" cy="86" r="6.5" />
+              <rect x="58.4" y="58" width="3.2" height="26" />
+              <rect x="61.6" y="63" width="6" height="3" />
+              <rect x="61.6" y="70" width="4.5" height="3" />
+            </g>
+          </g>
+        </svg>
+      </button>
+
+      <div class="status">
+        <div class="statusline" id="statusText">НЕ ЗАЩИЩЕНО</div>
+        <div class="substatus" id="subText">// ключ не добавлен</div>
+      </div>
+
+      <div class="metrics" id="metrics" hidden>
+        <div class="metric"><span class="mlabel">// приём</span><span class="mval" id="mDown">0</span></div>
+        <div class="metric"><span class="mlabel">// пинг</span><span class="mval" id="mPing">—</span></div>
+        <div class="metric"><span class="mlabel">// отдача</span><span class="mval" id="mUp">0</span></div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="keybox" id="keyBox">
+        <span class="legend">// ID КЛЮЧА ДОСТУПА</span>
+        <span class="version" id="version">v0.1.0</span>
+        <span class="keyval" id="keyVal">ключ не добавлен</span>
+        <button class="copybtn" id="btnCopy" aria-label="Скопировать">
+          <svg viewBox="0 0 24 24">
+            <rect x="9" y="9" width="11" height="11" rx="1" />
+            <path d="M15 5.5H6.5A2.5 2.5 0 0 0 4 8v8.5" />
+          </svg>
+        </button>
+      </div>
+    </footer>
+
+    <!-- ------------------------------ панели ------------------------------ -->
+    <div class="scrim" id="scrim"></div>
+
+    <section class="panel" id="panelMenu">
+      <div class="phead">
+        <button class="back" data-close aria-label="Назад"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2>МЕНЮ</h2>
+      </div>
+      <div class="pbody">
+        <button class="row" data-open="panelKeys">
+          <svg class="ricon" viewBox="0 0 24 24"><path d="M14 8a4 4 0 1 1-4 4"/><path d="M12.5 9.5L4 18v2h3v-2h2v-2h2l1.5-1.5"/></svg>
+          <span class="rtext">Ключи и подписки<em id="keysCount">нет</em></span>
+          <svg class="chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+        </button>
+        <button class="row" data-open="panelAdd">
+          <svg class="ricon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          <span class="rtext">Добавить ключ или подписку</span>
+          <svg class="chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+        </button>
+        <button class="row" data-open="panelAccount">
+          <svg class="ricon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
+          <span class="rtext">Личный кабинет<em>vpn.theeva.ai</em></span>
+          <svg class="chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+        </button>
+        <button class="row" data-open="panelBlocks">
+          <svg class="ricon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>
+          <span class="rtext">Блокировки и обходы<em id="blocksCount"></em></span>
+          <svg class="chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+        </button>
+        <button class="row" data-open="panelSettings">
+          <svg class="ricon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>
+          <span class="rtext">Настройки</span>
+          <svg class="chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+        </button>
+        <button class="row" id="btnRepair">
+          <svg class="ricon" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17v3h3l5.3-5.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2-2 2.6-2.6z"/></svg>
+          <span class="rtext">Восстановить сеть<em>если интернет пропал</em></span>
+        </button>
+        <button class="row" data-open="panelLogs">
+          <svg class="ricon" viewBox="0 0 24 24"><path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/></svg>
+          <span class="rtext">Журнал подключения</span>
+          <svg class="chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+        </button>
+        <button class="row" data-open="panelAbout">
+          <svg class="ricon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+          <span class="rtext">О программе</span>
+          <svg class="chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <section class="panel" id="panelKeys">
+      <div class="phead">
+        <button class="back" data-close aria-label="Назад"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2>КЛЮЧИ И ПОДПИСКИ</h2>
+        <button class="hbtn" id="btnRefreshSubs" title="Обновить подписки">
+          <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>
+        </button>
+      </div>
+      <div class="pbody" id="keysList"></div>
+      <div class="pfoot">
+        <button class="primary" data-open="panelAdd">ДОБАВИТЬ КЛЮЧ</button>
+      </div>
+    </section>
+
+    <section class="panel" id="panelAdd">
+      <div class="phead">
+        <button class="back" data-close aria-label="Назад"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2>ДОБАВИТЬ</h2>
+      </div>
+      <div class="pbody">
+        <p class="hint">Вставьте ключ <code>vless://…</code> или ссылку на подписку <code>https://…</code>. Можно сразу несколько строк.</p>
+        <textarea id="addInput" spellcheck="false" placeholder="vless://uuid@server:443?security=reality&#10;https://vpn.theeva.ai/sub/xxxx"></textarea>
+        <div class="btnrow">
+          <button class="ghost" id="btnPaste">ИЗ БУФЕРА</button>
+          <button class="primary" id="btnAdd">ДОБАВИТЬ</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panelAccount">
+      <div class="phead">
+        <button class="back" data-close aria-label="Назад"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2>ЛИЧНЫЙ КАБИНЕТ</h2>
+        <button class="hbtn" id="btnRefreshAccount" title="Обновить подписки">
+          <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>
+        </button>
+      </div>
+      <div class="pbody" id="accountBox"></div>
+    </section>
+
+    <section class="panel" id="panelBlocks">
+      <div class="phead">
+        <button class="back" data-close aria-label="Назад"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2>БЛОКИРОВКИ И ОБХОДЫ</h2>
+      </div>
+      <div class="pbody" id="blocksList"></div>
+    </section>
+
+    <section class="panel" id="panelSettings">
+      <div class="phead">
+        <button class="back" data-close aria-label="Назад"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2>НАСТРОЙКИ</h2>
+      </div>
+      <div class="pbody">
+        <div class="group">
+          <div class="glabel">// 01 — режим подключения</div>
+          <label class="opt"><input type="radio" name="mode" value="tun" /><span><b>Туннель</b><em>Виртуальный кабель на весь трафик системы. Ничего не утекает мимо.</em></span></label>
+          <label class="opt"><input type="radio" name="mode" value="proxy" /><span><b>Системный прокси</b><em>Без прав администратора, но покрывает только приложения с поддержкой прокси.</em></span></label>
+        </div>
+
+        <div class="group">
+          <div class="glabel">// 02 — защита от утечек</div>
+          <label class="sw"><span>Killswitch<em>Блокировать весь трафик мимо туннеля</em></span><input type="checkbox" data-set="killSwitch" /><i></i></label>
+          <p class="note">Пока туннель жив, наружу выпускается только он. Если ядро упадёт
+          или вы нажмёте отключение — интернет встанет вместо того, чтобы пойти напрямую
+          и показать сайтам ваш настоящий адрес. Снять блокировку можно нажатием на сердце,
+          пунктом в трее или кнопкой «Восстановить сеть».</p>
+          <label class="sw"><span>Приоритет над другими VPN<em>Перебивать чужие туннели (v2rayN и прочие)</em></span><input type="checkbox" data-set="vpnPriority" /><i></i></label>
+          <label class="sw"><span>Блокировать IPv6<em>Частый канал утечки реального адреса</em></span><input type="checkbox" data-set="blockIpv6" /><i></i></label>
+        </div>
+
+        <div class="group">
+          <div class="glabel">// 03 — поведение</div>
+          <label class="sw"><span>Автозапуск с Windows</span><input type="checkbox" data-set="autoStart" /><i></i></label>
+          <label class="sw"><span>Подключаться при запуске</span><input type="checkbox" data-set="autoConnect" /><i></i></label>
+          <label class="sw"><span>Сворачивать в трей</span><input type="checkbox" data-set="minimizeToTray" /><i></i></label>
+        </div>
+
+        <div class="group">
+          <div class="glabel">// 04 — dns и сеть</div>
+          <label class="field"><span>DNS через VPN</span><input type="text" data-set="dnsRemote" spellcheck="false" /></label>
+          <label class="field"><span>Локальный DNS</span><input type="text" data-set="dnsDirect" spellcheck="false" /></label>
+          <label class="field"><span>Порт прокси</span><input type="number" data-set="mixedPort" min="1024" max="65535" /></label>
+          <label class="sw"><span>Доступ из локальной сети</span><input type="checkbox" data-set="allowLan" /><i></i></label>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panelLogs">
+      <div class="phead">
+        <button class="back" data-close aria-label="Назад"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2>ЖУРНАЛ</h2>
+        <button class="hbtn" id="btnSelfTest" title="Проверить соединение">
+          <svg viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="12" cy="12" r="4"/></svg>
+        </button>
+        <button class="hbtn" id="btnOpenLogs" title="Открыть папку журналов">
+          <svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/></svg>
+        </button>        <button class="hbtn" id="btnCopyLogs" title="Скопировать">
+          <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="1"/><path d="M15 5.5H6.5A2.5 2.5 0 0 0 4 8v8.5"/></svg>
+        </button>
+      </div>
+      <div class="pbody"><pre class="logs" id="logsBox"></pre></div>
+    </section>
+
+    <section class="panel" id="panelAbout">
+      <div class="phead">
+        <button class="back" data-close aria-label="Назад"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <h2>О ПРОГРАММЕ</h2>
+      </div>
+      <div class="pbody about">
+        <svg class="bigheart" viewBox="0 0 120 112">
+          <path class="h-outer" d="M60 104 C60 104 8 74 8 39 C8 19 24 6 41 6 C51 6 57 11 60 17 C63 11 69 6 79 6 C96 6 112 19 112 39 C112 74 60 104 60 104 Z" />
+          <path class="h-inner" d="M60 96 C60 96 17 70 17 41 C17 24 30 14 43 14 C51 14 57 18 60 23 C63 18 69 14 77 14 C90 14 103 24 103 41 C103 70 60 96 60 96 Z" />
+          <g class="keyhole"><circle cx="60" cy="45" r="11" /><path d="M55.5 52 L52 70 h16 l-3.5 -18 Z" /></g>
+        </svg>
+        <div class="aname">VPN.<span class="blue">THEEVA</span>.AI</div>
+        <div class="aver" id="aboutVer"></div>
+        <p class="hint">Клиент VLESS / Reality на ядре sing-box. Открытый код, без телеметрии и без вмешательства в чужие подключения.</p>
+        <button class="ghost" data-link="https://vpn.theeva.ai">vpn.theeva.ai</button>
+        <button class="ghost" data-link="https://github.com/">Исходный код</button>
+      </div>
+    </section>
+
+    <div class="modal" id="modalAdmin">
+      <div class="mbox">
+        <div class="glabel">// требуются права</div>
+        <h3>НУЖЕН АДМИНИСТРАТОР</h3>
+        <p>Туннель создаёт системный сетевой адаптер и перехватывает весь трафик — Windows разрешает это только с правами администратора.</p>
+        <div class="btnrow">
+          <button class="ghost" id="admProxy">ОБОЙТИСЬ ПРОКСИ</button>
+          <button class="primary" id="admRestart">ПЕРЕЗАПУСТИТЬ</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="applybar" id="applyBar" hidden>
+      <span>// изменения ждут переподключения</span>
+      <button id="applyBtn">ПРИМЕНИТЬ</button>
+    </div>
+
+    <div class="pop" id="palettePop" hidden></div>
+
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Скачать ядро sing-box
+        run: node scripts/fetch-core.mjs
+
+      - name: Проверка генерации конфига ядром
+        run: node scripts/check-config.mjs
+
+      - name: Пробная сборка (без публикации)
+        run: npx electron-builder --win --dir
