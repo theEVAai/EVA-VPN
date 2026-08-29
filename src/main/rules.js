@@ -126,7 +126,7 @@ const MODULES = [
     key: 'selfHostedDirect',
     action: 'direct',
     title: 'Свой сервер мимо VPN',
-    hint: 'Cloudflare Tunnel и подобные: иначе сайт с этого ПК открывается через лишний круг',
+    hint: 'Cloudflare Tunnel и подобные напрямую. НЕ включайте, если провайдер режет Cloudflare — туннель начнёт обрываться',
     processes: SELF_HOSTED
   },
   {

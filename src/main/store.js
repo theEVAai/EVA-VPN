@@ -18,7 +18,7 @@ const DEFAULTS = {
     ruDirect: true,
     kodikDirect: true,
     trustedDirect: true,
-    selfHostedDirect: true,
+    selfHostedDirect: false,
     blockQuic: false,
     proxyWithTun: true,
     killSwitch: true,
