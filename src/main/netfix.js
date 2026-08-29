@@ -364,8 +364,35 @@ async function restorePriority() {
  * Killswitch: исходящий трафик по умолчанию запрещён, разрешены только
  * сам туннель, ядро, приложение и локальная сеть. Мимо VPN не уходит ничего.
  */
-async function enableKillSwitch({ alias = TUN_NAME, coreExe, appExe, tunAddr }) {
+/**
+ * Программы, которым killswitch иначе перекрывает путь к локальным сервисам.
+ *
+ * Windows разрешает петлю 127.0.0.1 правилом по адресу, но IPv6-петлю ::1
+ * в правила брандмауэра внести нельзя — система отвечает «указан петлевой
+ * IPv6-адрес». А `localhost` в Windows разрешается сначала в ::1, поэтому
+ * демоны туннелей перестают достукиваться до собственных сервисов.
+ * Разрешаем их по пути к файлу.
+ */
+async function localDaemonPaths(names) {
+  if (!names || !names.length) return [];
+  const list = names.map((n) => "'" + n.replace(/\.exe$/i, '') + "'").join(',');
+  const r = await runPs(
+    'Get-Process ' + list + " -ErrorAction SilentlyContinue |" +
+    ' Select-Object -ExpandProperty Path -Unique'
+  );
+  return r.stdout.split(/\r?\n/).map((x) => x.trim()).filter((x) => x.toLowerCase().endsWith('.exe'));
+}
+
+async function enableKillSwitch({ alias = TUN_NAME, coreExe, appExe, tunAddr, allowPrograms }) {
   const q = (v) => String(v || '').replace(/'/g, "''");
+  const daemons = await localDaemonPaths(allowPrograms);
+  const extraAllow = daemons
+    .map((exe, i) =>
+      "New-NetFirewallRule -DisplayName 'EVA VPN local service " + i + "' -Group '" + FW_GROUP +
+      "' -Direction Outbound -Action Allow -Program '" + q(exe) + "' -Profile Any -ErrorAction SilentlyContinue | Out-Null" + NL
+    )
+    .join('');
+
   const r = await runPs(
     "Remove-NetFirewallRule -Group '" + FW_GROUP + "' -ErrorAction SilentlyContinue\n" +
     "$prev = ((Get-NetFirewallProfile -All | ForEach-Object { $_.Name + '=' + $_.DefaultOutboundAction }) -join ';')\n" +
@@ -379,6 +406,7 @@ async function enableKillSwitch({ alias = TUN_NAME, coreExe, appExe, tunAddr }) 
       : '') +
     "New-NetFirewallRule -DisplayName 'EVA VPN local' -Group '" + FW_GROUP + "' -Direction Outbound -Action Allow -RemoteAddress LocalSubnet,127.0.0.0/8,224.0.0.0/4,255.255.255.255 -Profile Any -ErrorAction SilentlyContinue | Out-Null\n" +
     "New-NetFirewallRule -DisplayName 'EVA VPN dhcp' -Group '" + FW_GROUP + "' -Direction Outbound -Action Allow -Protocol UDP -LocalPort 68 -RemotePort 67 -Profile Any -ErrorAction SilentlyContinue | Out-Null\n" +
+    extraAllow +
     "Set-NetFirewallProfile -All -DefaultOutboundAction Block -ErrorAction SilentlyContinue\n" +
     "$off = ((Get-NetFirewallProfile -All | Where-Object { -not $_.Enabled }) | ForEach-Object { $_.Name }) -join ','" + NL +
     "Write-Output ('OFF:' + $off)" + NL +
@@ -452,6 +480,7 @@ async function guardCleanup() {
 
 module.exports = {
   GUARD_FILE,
+  localDaemonPaths,
   flushRouteCaches,
   foreignTunnels,
   waitProcessGone,

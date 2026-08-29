@@ -1,7 +1,7 @@
 {
   "name": "eva-vpn",
   "productName": "EVA VPN",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "EVA VPN — простой клиент VLESS/Reality для Windows",
   "main": "src/main/main.js",
   "author": "theeva.ai",

@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { buildConfig, TUN_IPV4 } = require('./config');
+const { SELF_HOSTED } = require('./rules');
 const netfix = require('./netfix');
 
 const LOG_LIMIT = 500;
@@ -202,7 +203,8 @@ class Core extends EventEmitter {
           alias,
           coreExe: this.paths.coreExe,
           appExe: this.paths.appExe,
-          tunAddr: TUN_IPV4.split('/')[0]
+          tunAddr: TUN_IPV4.split('/')[0],
+          allowPrograms: SELF_HOSTED
         });
         this.killSwitchOn = true;
         this.log('Killswitch включён: исходящий трафик мимо туннеля заблокирован');

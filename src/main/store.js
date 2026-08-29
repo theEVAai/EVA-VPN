@@ -21,7 +21,7 @@ const DEFAULTS = {
     selfHostedDirect: false,
     blockQuic: false,
     proxyWithTun: false,
-    killSwitch: true,
+    killSwitch: false,
     vpnPriority: true,
     blockIpv6: true,
     allowLan: false,
