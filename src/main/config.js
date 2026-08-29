@@ -82,7 +82,7 @@ function buildConfig({ profile, mode, opts, paths }) {
       clashSecret: '',
       allowLan: false,
       ipv6: false,
-      tunStack: 'mixed',
+      tunStack: 'gvisor',
       tunName: 'EVA',
       mtu: 9000,
       blockAds: false,

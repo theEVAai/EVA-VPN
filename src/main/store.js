@@ -20,13 +20,13 @@ const DEFAULTS = {
     trustedDirect: true,
     selfHostedDirect: false,
     blockQuic: false,
-    proxyWithTun: true,
+    proxyWithTun: false,
     killSwitch: true,
     vpnPriority: true,
     blockIpv6: true,
     allowLan: false,
     bypassPrivate: true,
-    tunStack: 'mixed',           // mixed | system | gvisor
+    tunStack: 'gvisor',          // gvisor | mixed | system
     mtu: 9000,
     mixedPort: 2080,
     clashPort: 19090,
