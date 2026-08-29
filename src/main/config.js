@@ -176,10 +176,13 @@ function buildConfig({ profile, mode, opts, paths }) {
   }
 
   // --- Правила маршрутизации ---
-  // Разбираем только TCP: доменные правила нужны именно там. У QUIC разбор
-  // каждой датаграммы даёт задержку и лишние ошибки — v2rayN, на котором
-  // всё работало, держит его выключенным полностью.
-  routeRules.push({ network: 'tcp', action: 'sniff' });
+  // Разбор нужен целиком, включая UDP: без него правило protocol=dns ниже
+  // никогда не срабатывает, запросы имён уходят в никуда и перестаёт
+  // открываться всё. Проверено опытом: сужение разбора до TCP убивает DNS.
+  routeRules.push({ action: 'sniff' });
+  // Перехват по порту — подстраховка на случай, если разбор не успел
+  // определить протокол: DNS всегда ходит на 53.
+  routeRules.push({ port: [53], action: 'hijack-dns' });
   routeRules.push({ protocol: 'dns', action: 'hijack-dns' });
   // Windows-специфика: NetBIOS/LLMNR/mDNS мимо туннеля, иначе локальная сеть тормозит
   routeRules.push({ network: 'udp', port: [135, 137, 138, 139, 5353], action: 'reject' });
