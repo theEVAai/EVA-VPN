@@ -567,7 +567,7 @@ function registerIpc() {
     // соединения, поэтому не делаем его исподтишка: копим и ждём кнопку.
     const configKeys = [
       'blockIpv6', 'tunStack', 'allowLan', 'mixedPort', 'dnsRemote', 'dnsDirect',
-      'blockAds', 'blockTrackers', 'blockYoutubeAds', 'ruDirect', 'kodikDirect', 'trustedDirect'
+      'blockAds', 'blockTrackers', 'blockYoutubeAds', 'ruDirect', 'kodikDirect', 'trustedDirect, 'selfHostedDirect'
     ];
     if (running && configKeys.includes(key)) {
       pendingRestart = true;

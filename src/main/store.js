@@ -18,6 +18,7 @@ const DEFAULTS = {
     ruDirect: true,
     kodikDirect: true,
     trustedDirect: true,
+    selfHostedDirect: true,
     killSwitch: true,
     vpnPriority: true,
     blockIpv6: true,

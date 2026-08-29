@@ -64,6 +64,23 @@ const KODIK = [
   'kodik-storage.com', 'kodik-cdn.com'
 ];
 
+/**
+ * Процессы, которым туннель только мешает.
+ *
+ * Если сайт живёт на этом же компьютере и отдаётся наружу через туннель
+ * (Cloudflare Tunnel, ngrok и подобные), то заворачивать его обратный канал
+ * в VPN — значит гонять каждый запрос лишний круг через зарубежный сервер:
+ * браузер идёт на Cloudflare, а Cloudflare возвращается на этот же ПК через
+ * туннель, который теперь проложен через другую страну. Сайт от этого
+ * открывается втрое дольше для всех, включая владельца.
+ */
+const SELF_HOSTED = [
+  'cloudflared.exe',
+  'ngrok.exe',
+  'frpc.exe',
+  'tailscaled.exe'
+];
+
 /** Сервисы, которым проксирование ломает работу. */
 const TRUSTED = ['appstore.com', 'theeva.ai'];
 
@@ -106,6 +123,13 @@ const MODULES = [
     domains: KODIK
   },
   {
+    key: 'selfHostedDirect',
+    action: 'direct',
+    title: 'Свой сервер мимо VPN',
+    hint: 'Cloudflare Tunnel и подобные: иначе сайт с этого ПК открывается через лишний круг',
+    processes: SELF_HOSTED
+  },
+  {
     key: 'trustedDirect',
     action: 'direct',
     title: 'Свои сервисы мимо VPN',
@@ -114,4 +138,4 @@ const MODULES = [
   }
 ];
 
-module.exports = { MODULES, TRACKERS, YOUTUBE_ADS, RU_SUFFIX, RU_DIRECT, KODIK, TRUSTED };
+module.exports = { MODULES, TRACKERS, YOUTUBE_ADS, RU_SUFFIX, RU_DIRECT, KODIK, TRUSTED, SELF_HOSTED };

@@ -193,6 +193,13 @@ function buildConfig({ profile, mode, opts, paths }) {
   // DIRECT-правила идут первыми: то, что уходит мимо VPN, важнее того, что режется
   for (const mod of MODULES.filter((m) => m.action === 'direct')) {
     if (!o[mod.key]) continue;
+
+    // обход по имени процесса: домены тут ни при чём, важно кто именно ходит
+    if (mod.processes && mod.processes.length) {
+      routeRules.push({ process_name: mod.processes.slice(), action: 'route', outbound: 'direct' });
+      continue;
+    }
+
     const rule = { action: 'route', outbound: 'direct' };
     if (mod.suffixes) rule.domain_suffix = mod.suffixes.slice();
     if (mod.domains) rule.domain_suffix = (rule.domain_suffix || []).concat(mod.domains);
