@@ -241,12 +241,14 @@
           пунктом в трее или кнопкой «Восстановить сеть».</p>
           <label class="sw"><span>Приоритет над другими VPN<em>Перебивать чужие туннели (v2rayN и прочие)</em></span><input type="checkbox" data-set="vpnPriority" /><i></i></label>
           <label class="sw"><span>Блокировать IPv6<em>Частый канал утечки реального адреса</em></span><input type="checkbox" data-set="blockIpv6" /><i></i></label>
+          <label class="sw"><span>Блокировать QUIC<em>Браузеры перейдут на TCP — через туннель он стабильнее</em></span><input type="checkbox" data-set="blockQuic" /><i></i></label>
         </div>
 
         <div class="group">
           <div class="glabel">// 03 — поведение</div>
           <label class="sw"><span>Автозапуск с Windows</span><input type="checkbox" data-set="autoStart" /><i></i></label>
           <label class="sw"><span>Подключаться при запуске</span><input type="checkbox" data-set="autoConnect" /><i></i></label>
+          <label class="sw"><span>Переключать запущенные программы<em>Системный прокси вместе с туннелем: не нужно перезапускать приложения</em></span><input type="checkbox" data-set="proxyWithTun" /><i></i></label>
           <label class="sw"><span>Сворачивать в трей</span><input type="checkbox" data-set="minimizeToTray" /><i></i></label>
         </div>
 

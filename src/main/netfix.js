@@ -150,6 +150,19 @@ async function killOrphanCores() {
   return r.code === 0;
 }
 
+/**
+ * Сброс кэшей, из-за которых уже запущенные программы продолжают ходить
+ * прежним путём: Windows помнит, через какой интерфейс идти к адресу,
+ * и новые соединения приложения повторяют старое решение.
+ */
+async function flushRouteCaches() {
+  await runCmd('netsh', ['interface', 'ip', 'delete', 'destinationcache']);
+  await runCmd('netsh', ['interface', 'ipv6', 'delete', 'destinationcache']);
+  await runCmd('arp', ['-d', '*']);
+  await runCmd('ipconfig', ['/flushdns']);
+  return true;
+}
+
 async function flushDns() {
   await runCmd('ipconfig', ['/flushdns']);
   return true;
@@ -439,6 +452,7 @@ async function guardCleanup() {
 
 module.exports = {
   GUARD_FILE,
+  flushRouteCaches,
   foreignTunnels,
   waitProcessGone,
   waitAdapterGone,

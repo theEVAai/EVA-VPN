@@ -19,6 +19,8 @@ const DEFAULTS = {
     kodikDirect: true,
     trustedDirect: true,
     selfHostedDirect: true,
+    blockQuic: true,
+    proxyWithTun: true,
     killSwitch: true,
     vpnPriority: true,
     blockIpv6: true,

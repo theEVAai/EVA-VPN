@@ -86,6 +86,7 @@ function buildConfig({ profile, mode, opts, paths }) {
       tunName: 'EVA',
       mtu: 9000,
       blockAds: false,
+      blockQuic: true,
       bypassPrivate: true,
       dnsRemote: 'https://1.1.1.1/dns-query',
       dnsDirect: '77.88.8.8',
@@ -221,6 +222,13 @@ function buildConfig({ profile, mode, opts, paths }) {
       routeRules.push({ domain_suffix: mod.domains.slice(), action: 'reject' });
       dnsRules.push({ domain_suffix: mod.domains.slice(), action: 'predefined', rcode: 'NXDOMAIN' });
     }
+  }
+
+  // QUIC через туннель ведёт себя хуже TCP: потери множатся, а браузер
+  // не понижает скорость. Все клиенты прокси режут его по этой же причине,
+  // после чего браузер сам откатывается на HTTP/2 поверх TCP.
+  if (o.blockQuic) {
+    routeRules.push({ network: 'udp', port: [443], action: 'reject' });
   }
 
   if (!o.ipv6) {

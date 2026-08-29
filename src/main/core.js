@@ -170,6 +170,16 @@ class Core extends EventEmitter {
     if (mode === 'tun') {
       const alias = settings.tunName || netfix.tunAlias();
 
+      // Уже запущенные программы держат открытые соединения и помнят старый
+      // маршрут. Системный прокси они перечитывают на лету — и переключаются
+      // без перезапуска; сброс кэшей помогает остальным.
+      if (settings.proxyWithTun !== false) {
+        await netfix.setSystemProxy(settings.mixedPort || 2080);
+        this.proxyWasSet = true;
+        this.log('Системный прокси включён вместе с туннелем: запущенные программы переключатся сами');
+      }
+      await netfix.flushRouteCaches();
+
       // наш туннель должен быть главным, иначе чужой VPN перетянет маршрут на себя
       if (settings.vpnPriority !== false) {
         const demoted = await netfix.applyPriority(alias);
