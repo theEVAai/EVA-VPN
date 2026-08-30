@@ -373,6 +373,8 @@ async function restorePriority() {
  * демоны туннелей перестают достукиваться до собственных сервисов.
  * Разрешаем их по пути к файлу.
  */
+const LOCAL_DAEMONS = ['cloudflared.exe', 'ngrok.exe', 'frpc.exe', 'tailscaled.exe'];
+
 async function localDaemonPaths(names) {
   if (!names || !names.length) return [];
   const list = names.map((n) => "'" + n.replace(/\.exe$/i, '') + "'").join(',');
@@ -383,7 +385,7 @@ async function localDaemonPaths(names) {
   return r.stdout.split(/\r?\n/).map((x) => x.trim()).filter((x) => x.toLowerCase().endsWith('.exe'));
 }
 
-async function enableKillSwitch({ alias = TUN_NAME, coreExe, appExe, tunAddr, allowPrograms }) {
+async function enableKillSwitch({ alias = TUN_NAME, coreExe, appExe, tunAddr, allowPrograms = LOCAL_DAEMONS }) {
   const q = (v) => String(v || '').replace(/'/g, "''");
   const daemons = await localDaemonPaths(allowPrograms);
   const extraAllow = daemons
@@ -481,6 +483,7 @@ async function guardCleanup() {
 module.exports = {
   GUARD_FILE,
   localDaemonPaths,
+  LOCAL_DAEMONS,
   flushRouteCaches,
   foreignTunnels,
   waitProcessGone,

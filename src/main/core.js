@@ -7,7 +7,6 @@ const fs = require('fs');
 const path = require('path');
 
 const { buildConfig, TUN_IPV4 } = require('./config');
-const { SELF_HOSTED } = require('./rules');
 const netfix = require('./netfix');
 
 const LOG_LIMIT = 500;
@@ -171,14 +170,8 @@ class Core extends EventEmitter {
     if (mode === 'tun') {
       const alias = settings.tunName || netfix.tunAlias();
 
-      // Уже запущенные программы держат открытые соединения и помнят старый
-      // маршрут. Системный прокси они перечитывают на лету — и переключаются
-      // без перезапуска; сброс кэшей помогает остальным.
-      if (settings.proxyWithTun !== false) {
-        await netfix.setSystemProxy(settings.mixedPort || 2080);
-        this.proxyWasSet = true;
-        this.log('Системный прокси включён вместе с туннелем: запущенные программы переключатся сами');
-      }
+      // Уже запущенные программы помнят, каким интерфейсом ходить к адресу.
+      // Сброс кэшей заставляет их принять решение заново.
       await netfix.flushRouteCaches();
 
       // наш туннель должен быть главным, иначе чужой VPN перетянет маршрут на себя
@@ -203,8 +196,7 @@ class Core extends EventEmitter {
           alias,
           coreExe: this.paths.coreExe,
           appExe: this.paths.appExe,
-          tunAddr: TUN_IPV4.split('/')[0],
-          allowPrograms: SELF_HOSTED
+          tunAddr: TUN_IPV4.split('/')[0]
         });
         this.killSwitchOn = true;
         this.log('Killswitch включён: исходящий трафик мимо туннеля заблокирован');

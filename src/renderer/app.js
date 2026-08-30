@@ -192,7 +192,9 @@ function renderBlocks(s) {
         .filter((m) => m.action === action)
         .map(
           (m) =>
-            `<label class="sw"><span>${esc(m.title)}<em>${esc(m.hint)}</em></span>` +
+            `<label class="sw"><span>${esc(m.title)}` +
+            (m.badge ? `<b class="must">${esc(m.badge)}</b>` : '') +
+            `<em>${esc(m.hint)}</em></span>` +
             `<input type="checkbox" data-mod="${m.key}"${s.settings[m.key] ? ' checked' : ''} /><i></i></label>`
         )
         .join('');

@@ -205,7 +205,7 @@ function snapshot() {
     uptime: core.startedAt ? Date.now() - core.startedAt : 0,
     guard: { killSwitch: core.killSwitchOn, priority: core.priorityApplied },
     pendingRestart,
-    modules: MODULES.map((m) => ({ key: m.key, action: m.action, title: m.title, hint: m.hint })),
+    modules: MODULES.map((m) => ({ key: m.key, action: m.action, title: m.title, hint: m.hint, badge: m.badge || null })),
     site: { authorized: Boolean(site && site.authorized) }
   };
 }
@@ -567,8 +567,7 @@ function registerIpc() {
     // соединения, поэтому не делаем его исподтишка: копим и ждём кнопку.
     const configKeys = [
       'blockIpv6', 'tunStack', 'allowLan', 'mixedPort', 'dnsRemote', 'dnsDirect',
-      'blockAds', 'blockTrackers', 'blockYoutubeAds', 'ruDirect', 'kodikDirect', 'trustedDirect',
-      'selfHostedDirect', 'blockQuic', 'proxyWithTun'
+      'blockTrackers', 'ruDirect', 'kodikDirect', 'trustedDirect'
     ];
     if (running && configKeys.includes(key)) {
       pendingRestart = true;

@@ -85,8 +85,6 @@ function buildConfig({ profile, mode, opts, paths }) {
       tunStack: 'gvisor',
       tunName: 'EVA',
       mtu: 9000,
-      blockAds: false,
-      blockQuic: false,
       bypassPrivate: true,
       dnsRemote: 'https://1.1.1.1/dns-query',
       dnsDirect: '77.88.8.8',
@@ -216,25 +214,10 @@ function buildConfig({ profile, mode, opts, paths }) {
 
   for (const mod of MODULES.filter((m) => m.action === 'reject')) {
     if (!o[mod.key]) continue;
-    if (mod.ruleSet && srss) {
-      const tag = mod.ruleSet;
-      if (!ruleSets.some((r) => r.tag === tag)) {
-        ruleSets.push({ type: 'local', tag, format: 'binary', path: path.join(srss, tag + '.srs') });
-      }
-      routeRules.push({ rule_set: [tag], action: 'reject' });
-      dnsRules.push({ rule_set: [tag], action: 'predefined', rcode: 'NXDOMAIN' });
-    }
     if (mod.domains && mod.domains.length) {
       routeRules.push({ domain_suffix: mod.domains.slice(), action: 'reject' });
       dnsRules.push({ domain_suffix: mod.domains.slice(), action: 'predefined', rcode: 'NXDOMAIN' });
     }
-  }
-
-  // Необязательная мера: через туннель QUIC иногда ведёт себя хуже TCP.
-  // По умолчанию выключено — правило режет весь UDP на 443 у всех программ,
-  // включая другие VPN-клиенты, которые ходят на этот порт.
-  if (o.blockQuic) {
-    routeRules.push({ network: 'udp', port: [443], action: 'reject' });
   }
 
   if (!o.ipv6) {

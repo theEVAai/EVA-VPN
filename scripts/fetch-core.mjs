@@ -20,7 +20,6 @@ const NAME = `sing-box-${VERSION}-windows-${ARCH}`;
 const ZIP_URL = `https://github.com/SagerNet/sing-box/releases/download/v${VERSION}/${NAME}.zip`;
 
 const RULE_SETS = [
-  'geosite-category-ads-all',
   'geosite-private'
 ];
 

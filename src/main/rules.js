@@ -28,21 +28,6 @@ const TRACKERS = [
   'sentry.io', 'bugsnag.com', 'newrelic.com', 'crashlytics.com'
 ];
 
-/**
- * Реклама и телеметрия YouTube.
- * Честно: сами ролики раздаются с тех же адресов, что и видео, поэтому
- * доменной блокировкой снимаются баннеры, счётчики и часть преролла,
- * но не всё. Полностью режет только расширение в браузере.
- */
-const YOUTUBE_ADS = [
-  'googleads.g.doubleclick.net', 'pubads.g.doubleclick.net', 'static.doubleclick.net',
-  'ad.doubleclick.net', 'stats.g.doubleclick.net',
-  'ads.youtube.com', 'ad.youtube.com', 'clients1.google.com',
-  'youtube.googleapis.com/youtubei/v1/log_event',
-  'yt3.ggpht.com/ads', 's.youtube.com', 'video-stats.l.google.com',
-  'googleadapis.l.google.com', 'imasdk.googleapis.com'
-];
-
 /** Российские зоны и сервисы, которым VPN только мешает. */
 const RU_SUFFIX = ['.ru', '.su', '.рф', '.xn--p1ai', '.moscow', '.tatar'];
 
@@ -65,24 +50,18 @@ const KODIK = [
 ];
 
 /**
- * Процессы, которым туннель только мешает.
+ * App Store и обновления Apple.
  *
- * Если сайт живёт на этом же компьютере и отдаётся наружу через туннель
- * (Cloudflare Tunnel, ngrok и подобные), то заворачивать его обратный канал
- * в VPN — значит гонять каждый запрос лишний круг через зарубежный сервер:
- * браузер идёт на Cloudflare, а Cloudflare возвращается на этот же ПК через
- * туннель, который теперь проложен через другую страну. Сайт от этого
- * открывается втрое дольше для всех, включая владельца.
+ * Apple раздаёт загрузки собственной сетью и на прокси отвечает обрывами:
+ * магазин виснет на «Ожидание», обновления не докачиваются. Единственный
+ * домен, которому обход действительно нужен.
  */
-const SELF_HOSTED = [
-  'cloudflared.exe',
-  'ngrok.exe',
-  'frpc.exe',
-  'tailscaled.exe'
+const APPLE = [
+  'appstore.com',
+  'apps.apple.com',
+  'itunes.apple.com',
+  'mzstatic.com'
 ];
-
-/** Сервисы, которым проксирование ломает работу. */
-const TRUSTED = ['appstore.com', 'theeva.ai'];
 
 /** Описание тумблеров для интерфейса и для сборки конфига. */
 const MODULES = [
@@ -92,20 +71,6 @@ const MODULES = [
     title: 'Трекеры и метрики',
     hint: 'Яндекс.Метрика, Google Analytics, Meta Pixel и ещё 30 счётчиков',
     domains: TRACKERS
-  },
-  {
-    key: 'blockAds',
-    action: 'reject',
-    title: 'Реклама',
-    hint: 'Общий список рекламных доменов (geosite category-ads-all)',
-    ruleSet: 'geosite-category-ads-all'
-  },
-  {
-    key: 'blockYoutubeAds',
-    action: 'reject',
-    title: 'Реклама в YouTube',
-    hint: 'Баннеры и счётчики. Ролики идут с адресов самого видео — их доменом не отрезать',
-    domains: YOUTUBE_ADS
   },
   {
     key: 'ruDirect',
@@ -123,19 +88,13 @@ const MODULES = [
     domains: KODIK
   },
   {
-    key: 'selfHostedDirect',
-    action: 'direct',
-    title: 'Свой сервер мимо VPN',
-    hint: 'Cloudflare Tunnel и подобные напрямую. НЕ включайте, если провайдер режет Cloudflare — туннель начнёт обрываться',
-    processes: SELF_HOSTED
-  },
-  {
     key: 'trustedDirect',
     action: 'direct',
-    title: 'Свои сервисы мимо VPN',
-    hint: 'theeva.ai и App Store: им проксирование только мешает',
-    domains: TRUSTED
+    title: 'App Store мимо VPN',
+    hint: 'Apple обрывает загрузки через прокси: магазин виснет на «Ожидание», обновления не докачиваются',
+    badge: 'обязательно включить',
+    domains: APPLE
   }
 ];
 
-module.exports = { MODULES, TRACKERS, YOUTUBE_ADS, RU_SUFFIX, RU_DIRECT, KODIK, TRUSTED, SELF_HOSTED };
+module.exports = { MODULES, TRACKERS, RU_SUFFIX, RU_DIRECT, KODIK, APPLE };

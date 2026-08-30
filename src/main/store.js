@@ -12,15 +12,10 @@ const DEFAULTS = {
     mode: 'tun',                 // tun | proxy
     autoConnect: false,
     autoStart: false,
-    blockAds: true,
     blockTrackers: true,
-    blockYoutubeAds: false,
     ruDirect: true,
     kodikDirect: true,
     trustedDirect: true,
-    selfHostedDirect: false,
-    blockQuic: false,
-    proxyWithTun: false,
     killSwitch: false,
     vpnPriority: true,
     blockIpv6: true,
@@ -49,11 +44,15 @@ class Store {
     try {
       const raw = fs.readFileSync(this.file, 'utf8');
       const parsed = JSON.parse(raw);
+      const known = {};
+      for (const key of Object.keys(DEFAULTS.settings)) {
+        if (parsed.settings && key in parsed.settings) known[key] = parsed.settings[key];
+      }
       this.data = {
         profiles: Array.isArray(parsed.profiles) ? parsed.profiles : [],
         subs: Array.isArray(parsed.subs) ? parsed.subs : [],
         activeId: parsed.activeId || null,
-        settings: Object.assign({}, DEFAULTS.settings, parsed.settings || {})
+        settings: Object.assign({}, DEFAULTS.settings, known)
       };
     } catch {
       /* первый запуск — остаются значения по умолчанию */
