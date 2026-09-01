@@ -27,6 +27,8 @@ class Core extends EventEmitter {
     this.startedAt = 0;
     this.clashPort = 19090;
     this.statsTimer = null;
+    this.pingTimer = null;
+    this.statsAbort = null;
     this.proxyWasSet = false;
     this.starting = false;
     this.intentionalStop = false;
@@ -280,36 +282,84 @@ class Core extends EventEmitter {
     this.setState('stopped');
   }
 
+  /**
+   * Статистика. Скорость приходит потоком с /traffic — это 25 байт в секунду.
+   * Раньше ради тех же двух чисел раз в секунду выкачивался весь список
+   * соединений: на пустом туннеле 16 КБ, а на долгой сессии сотни килобайт,
+   * и всё это разбиралось в главном процессе. Итоги и число соединений
+   * берём оттуда же, но раз в пять секунд.
+   */
   startStats() {
     this.stopStats();
-    let prev = null;
+    this.statsAbort = new AbortController();
+    this.streamTraffic();
+
     this.statsTimer = setInterval(async () => {
       try {
         const r = await fetch('http://127.0.0.1:' + this.clashPort + '/connections', {
-          signal: AbortSignal.timeout(2000)
+          signal: AbortSignal.timeout(4000)
         });
         if (!r.ok) return;
         const d = await r.json();
-        const now = { up: d.uploadTotal || 0, down: d.downloadTotal || 0, t: Date.now() };
-        if (prev) {
-          const dt = Math.max(0.2, (now.t - prev.t) / 1000);
-          this.stats.up = Math.max(0, Math.round((now.up - prev.up) / dt));
-          this.stats.down = Math.max(0, Math.round((now.down - prev.down) / dt));
-        }
-        this.stats.upTotal = now.up;
-        this.stats.downTotal = now.down;
+        this.stats.upTotal = d.uploadTotal || 0;
+        this.stats.downTotal = d.downloadTotal || 0;
         this.stats.connections = (d.connections || []).length;
-        prev = now;
-        this.emit('stats', { ...this.stats, uptime: this.startedAt ? Date.now() - this.startedAt : 0 });
       } catch {
         /* ядро могло уйти — увидим по событию exit */
       }
+    }, 5000);
+
+    this.pingTimer = setInterval(() => {
+      this.testDelay().then((delay) => this.emit('ping', { delay }));
+    }, 30000);
+    // первая проба сразу после того, как маршруты успели встать
+    setTimeout(() => {
+      this.testDelay().then((delay) => this.emit('ping', { delay }));
+    }, 2500);
+  }
+
+  /**
+   * /traffic отдаёт по строке JSON в секунду и держит соединение открытым.
+   * Если поток оборвался, а туннель жив — переоткрываем.
+   */
+  async streamTraffic() {
+    const ac = this.statsAbort;
+    if (!ac) return;
+    try {
+      const r = await fetch('http://127.0.0.1:' + this.clashPort + '/traffic', { signal: ac.signal });
+      if (!r.ok || !r.body) throw new Error('нет потока');
+      let tail = '';
+      for await (const chunk of r.body) {
+        tail += Buffer.from(chunk).toString('utf8');
+        const lines = tail.split('\n');
+        tail = lines.pop();
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const t = JSON.parse(line);
+            this.stats.up = Math.max(0, t.up || 0);
+            this.stats.down = Math.max(0, t.down || 0);
+          } catch { continue; }
+          this.emit('stats', { ...this.stats, uptime: this.startedAt ? Date.now() - this.startedAt : 0 });
+        }
+      }
+    } catch {
+      /* оборвался — ниже решим, стоит ли возвращаться */
+    }
+    // this.statsAbort мог смениться на новый — тогда поток уже ведёт другой вызов
+    if (this.statsAbort !== ac || ac.signal.aborted) return;
+    setTimeout(() => {
+      if (this.statsAbort === ac && !ac.signal.aborted) this.streamTraffic();
     }, 1000);
   }
 
   stopStats() {
     if (this.statsTimer) clearInterval(this.statsTimer);
     this.statsTimer = null;
+    if (this.pingTimer) clearInterval(this.pingTimer);
+    this.pingTimer = null;
+    if (this.statsAbort) this.statsAbort.abort();
+    this.statsAbort = null;
   }
 
   /**

@@ -63,6 +63,25 @@ const APPLE = [
   'mzstatic.com'
 ];
 
+/**
+ * Торрент-клиенты.
+ *
+ * Ловим двумя способами сразу. По имени процесса — берём и раздачу, и DHT,
+ * и обращения к трекерам, ещё до того, как по трафику что-то понятно.
+ * По распознанному протоколу — всё остальное: переименованный клиент,
+ * портативную сборку, встроенную качалку. Проверено живым рукопожатием:
+ * ядро отличает торрент от обычного HTTP по первым байтам.
+ */
+const TORRENT_APPS = [
+  'qbittorrent.exe', 'qbittorrent-nox.exe',
+  'utorrent.exe', 'utorrentie.exe', 'bittorrent.exe',
+  'transmission-qt.exe', 'transmission-gtk.exe', 'transmission-daemon.exe',
+  'deluge.exe', 'deluged.exe', 'deluge-gtk.exe', 'deluge-console.exe',
+  'bitcomet.exe', 'tixati.exe', 'picotorrent.exe',
+  'vuze.exe', 'azureus.exe', 'frostwire.exe',
+  'aria2c.exe', 'motrix.exe', 'mediaget.exe', 'zona.exe'
+];
+
 /** Описание тумблеров для интерфейса и для сборки конфига. */
 const MODULES = [
   {
@@ -88,6 +107,14 @@ const MODULES = [
     domains: KODIK
   },
   {
+    key: 'torrentDirect',
+    action: 'direct',
+    title: 'Торренты мимо VPN',
+    hint: 'Раздача и закачка идут напрямую через провайдера. Разгружает туннель, но ваш настоящий адрес виден каждому участнику раздачи',
+    processes: TORRENT_APPS,
+    protocols: ['bittorrent']
+  },
+  {
     key: 'trustedDirect',
     action: 'direct',
     title: 'App Store мимо VPN',
@@ -97,4 +124,4 @@ const MODULES = [
   }
 ];
 
-module.exports = { MODULES, TRACKERS, RU_SUFFIX, RU_DIRECT, KODIK, APPLE };
+module.exports = { MODULES, TRACKERS, RU_SUFFIX, RU_DIRECT, KODIK, APPLE, TORRENT_APPS };

@@ -259,7 +259,6 @@ async function doConnectInner() {
   }
 
   pendingRestart = false;
-  core.testDelay().then((d) => send('ping', { delay: d }));
 
   // Два туннеля одновременно — самая частая причина «сайты не открываются»
   if (mode === 'tun') {
@@ -567,7 +566,7 @@ function registerIpc() {
     // соединения, поэтому не делаем его исподтишка: копим и ждём кнопку.
     const configKeys = [
       'blockIpv6', 'tunStack', 'allowLan', 'mixedPort', 'dnsRemote', 'dnsDirect',
-      'blockTrackers', 'ruDirect', 'kodikDirect', 'trustedDirect'
+      'blockTrackers', 'ruDirect', 'kodikDirect', 'torrentDirect', 'trustedDirect'
     ];
     if (running && configKeys.includes(key)) {
       pendingRestart = true;
@@ -654,11 +653,6 @@ function registerIpc() {
     })
   );
 
-  ipcMain.handle('net:ping', async () => {
-    const delay = await core.testDelay();
-    return { delay };
-  });
-
   ipcMain.handle('core:logs', () => core.logs.slice(-200));
 
   ipcMain.handle('logs:open', () => {
@@ -712,6 +706,7 @@ if (!app.requestSingleInstanceLock()) {
     });
     core.on('notice', (text) => send('toast', { text, kind: 'err' }));
     core.on('stats', (s) => send('stats', s));
+    core.on('ping', (p) => send('ping', p));
     core.on('log', (l) => send('log', l));
 
     adminRights = await netfix.isAdmin();

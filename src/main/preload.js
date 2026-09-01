@@ -28,7 +28,6 @@ contextBridge.exposeInMainWorld('eva', {
   setSetting: (key, value) => ipcRenderer.invoke('settings:set', key, value),
   repairNetwork: (deep) => ipcRenderer.invoke('net:repair', deep),
   releaseGuards: () => ipcRenderer.invoke('net:release'),
-  ping: () => ipcRenderer.invoke('net:ping'),
   logs: () => ipcRenderer.invoke('core:logs'),
   openLogs: () => ipcRenderer.invoke('logs:open'),
   selfTest: () => ipcRenderer.invoke('net:selftest'),

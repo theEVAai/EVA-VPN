@@ -199,11 +199,20 @@ function buildConfig({ profile, mode, opts, paths }) {
   for (const mod of MODULES.filter((m) => m.action === 'direct')) {
     if (!o[mod.key]) continue;
 
-    // обход по имени процесса: домены тут ни при чём, важно кто именно ходит
+    // Обход по имени процесса и по распознанному протоколу: домены тут ни при
+    // чём, важно кто именно ходит и чем. DNS у таких программ тоже уводим
+    // напрямую, иначе имя трекера резолвится через туннель, а идут к нему мимо.
+    let byWho = false;
     if (mod.processes && mod.processes.length) {
       routeRules.push({ process_name: mod.processes.slice(), action: 'route', outbound: 'direct' });
-      continue;
+      dnsRules.push({ process_name: mod.processes.slice(), action: 'route', server: 'dns-direct' });
+      byWho = true;
     }
+    if (mod.protocols && mod.protocols.length) {
+      routeRules.push({ protocol: mod.protocols.slice(), action: 'route', outbound: 'direct' });
+      byWho = true;
+    }
+    if (byWho) continue;
 
     const rule = { action: 'route', outbound: 'direct' };
     if (mod.suffixes) rule.domain_suffix = mod.suffixes.slice();

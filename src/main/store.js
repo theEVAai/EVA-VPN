@@ -15,6 +15,7 @@ const DEFAULTS = {
     blockTrackers: true,
     ruDirect: true,
     kodikDirect: true,
+    torrentDirect: false,
     trustedDirect: true,
     killSwitch: false,
     vpnPriority: true,

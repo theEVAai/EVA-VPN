@@ -4,7 +4,6 @@ const $ = (id) => document.getElementById(id);
 const api = window.eva;
 
 let state = null;
-let pingTimer = null;
 
 /* ------------------------------------------------------------------ */
 /* Утилиты                                                             */
@@ -460,15 +459,6 @@ async function addFromInput() {
   if (!panelStack.includes('panelKeys')) openPanel('panelKeys');
 }
 
-function schedulePing() {
-  clearInterval(pingTimer);
-  pingTimer = setInterval(async () => {
-    if (!state || state.state !== 'running') return;
-    const { delay } = await api.ping();
-    $('mPing').textContent = delay ? delay + ' мс' : '—';
-  }, 30000);
-}
-
 /* ------------------------------------------------------------------ */
 /* Слушатели                                                           */
 /* ------------------------------------------------------------------ */
@@ -721,5 +711,4 @@ function wire() {
   wire();
   render(await api.getState());
   firstPaint = false;
-  schedulePing();
 })();
