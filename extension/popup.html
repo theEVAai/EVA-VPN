@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>EVA VPN</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <div class="wordmark">VPN.<span class="blue">THEEVA</span>.AI</div>
+      <button class="tab" id="tabRules" data-i18n="rules">Правила</button>
+    </header>
+
+    <main class="main" id="viewMain">
+      <button class="power" id="btnPower" aria-label="EVA VPN">
+        <svg viewBox="0 0 120 112" class="heart">
+          <path class="h-outer" d="M60 104 C60 104 8 74 8 39 C8 19 24 6 41 6 C51 6 57 11 60 17 C63 11 69 6 79 6 C96 6 112 19 112 39 C112 74 60 104 60 104 Z" />
+          <path class="h-inner" d="M60 96 C60 96 17 70 17 41 C17 24 30 14 43 14 C51 14 57 18 60 23 C63 18 69 14 77 14 C90 14 103 24 103 41 C103 70 60 96 60 96 Z" />
+          <g class="keyhole"><circle cx="60" cy="45" r="11" /><path d="M55.5 52 L52 70 h16 l-3.5 -18 Z" /></g>
+        </svg>
+      </button>
+
+      <div class="status" id="statusText" data-i18n="off">БРАУЗЕР НЕ ЗАЩИЩЁН</div>
+      <div class="sub" id="subText">—</div>
+
+      <div class="app" id="appRow">
+        <span class="dot" id="appDot"></span>
+        <span id="appText" data-i18n="appChecking">проверяю приложение…</span>
+      </div>
+    </main>
+
+    <section class="rules" id="viewRules" hidden>
+      <div class="glabel" data-i18n="bypassTitle">// мимо туннеля</div>
+      <p class="note" data-i18n="bypassNote">Эти адреса браузер открывает напрямую, даже когда расширение включено. Годится для банков и сайтов, которые ругаются на заграничный адрес.</p>
+      <div class="list" id="bypassList"></div>
+      <div class="addrow">
+        <input type="text" id="bypassInput" placeholder="example.com" spellcheck="false" autocomplete="off" />
+        <button class="primary" id="btnBypassAdd" data-i18n="add">ДОБАВИТЬ</button>
+      </div>
+
+      <div class="glabel" data-i18n="portsTitle">// порты приложения</div>
+      <div class="ports">
+        <label><span data-i18n="proxyPort">Прокси</span><input type="number" id="portProxy" min="1" max="65535" /></label>
+        <label><span data-i18n="apiPort">API</span><input type="number" id="portApi" min="1" max="65535" /></label>
+      </div>
+      <p class="note" data-i18n="portsNote">Менять нужно только если вы поменяли порт в настольном приложении.</p>
+    </section>
+
+    <footer class="foot">
+      <span id="hintText" data-i18n="hint">Защищает только браузер</span>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

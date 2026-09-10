@@ -1,0 +1,169 @@
+/* ------------------------------------------------------------------
+   EVA VPN — расширение, фирменный стиль
+   Палитра и приёмы те же, что в настольном приложении: кремовый текст,
+   синий акцент, моноширинные подписи с двойным слэшем.
+   ------------------------------------------------------------------ */
+
+:root {
+  --black: #0d0d0d;
+  --panel: #101010;
+  --cream: #d8cdb8;
+  --cream-dim: rgba(216, 205, 184, 0.42);
+  --blue: #1a3dcc;
+  --blue-2: #2450e8;
+  --blue-soft: rgba(36, 80, 232, 0.14);
+  --line: rgba(216, 205, 184, 0.16);
+  --danger: #e0574f;
+  --ok: #14b88a;
+  --mono: Consolas, "Courier New", monospace;
+  --sans: "Segoe UI", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* у .rules и .main задан display, а он перебивает атрибут hidden */
+[hidden] { display: none !important; }
+
+body {
+  width: 300px;
+  background: var(--black);
+  color: var(--cream);
+  font-family: var(--sans);
+  font-size: 13px;
+  user-select: none;
+}
+
+.wrap { display: flex; flex-direction: column; min-height: 360px; }
+
+/* ---------- шапка ---------- */
+.top {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.wordmark { font-family: var(--mono); font-weight: 700; font-size: 12px; letter-spacing: 1px; }
+.blue { color: var(--blue-2); }
+.tab {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  background: none; color: var(--cream-dim);
+  cursor: pointer;
+  transition: color .16s ease, border-color .16s ease, background .16s ease;
+}
+.tab:hover, .tab.active { color: #fff; background: var(--blue); border-color: var(--blue); }
+
+/* ---------- главный экран ---------- */
+.main {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 18px 12px 12px;
+  gap: 4px;
+}
+
+.power { background: none; border: none; cursor: pointer; padding: 0; }
+.heart { width: 92px; height: 86px; display: block; }
+.h-outer { fill: none; stroke: var(--cream-dim); stroke-width: 3; transition: fill .4s ease, stroke .4s ease; }
+.h-inner { fill: none; opacity: 0; transition: opacity .4s ease; }
+.keyhole circle, .keyhole path { fill: var(--cream-dim); transition: fill .4s ease; }
+
+body.on .h-outer { fill: var(--blue); stroke: var(--blue); }
+body.on .h-inner { fill: var(--cream); opacity: 1; }
+body.on .keyhole circle, body.on .keyhole path { fill: var(--blue-2); }
+body.on .heart { animation: beat 2.4s ease-in-out infinite; }
+
+@keyframes beat {
+  0%, 100% { transform: scale(1); }
+  14% { transform: scale(1.05); }
+  28% { transform: scale(1); }
+  42% { transform: scale(1.03); }
+}
+
+.status {
+  margin-top: 10px;
+  font-family: var(--mono); font-weight: 700;
+  font-size: 12.5px; letter-spacing: 1px;
+  text-align: center;
+  color: var(--cream-dim);
+}
+body.on .status { color: var(--blue-2); }
+
+.sub {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .8px;
+  color: var(--cream-dim);
+  text-align: center;
+}
+
+.app {
+  margin-top: 12px;
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .8px;
+  color: var(--cream-dim);
+}
+.dot { width: 7px; height: 7px; background: var(--cream-dim); flex: 0 0 auto; }
+.dot.ok { background: var(--ok); }
+.dot.bad { background: var(--danger); }
+
+/* ---------- правила ---------- */
+.rules { flex: 1; padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; }
+.glabel {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 1.4px;
+  text-transform: uppercase; color: var(--cream-dim);
+  margin-top: 6px;
+}
+.note { font-size: 11px; line-height: 1.5; color: var(--cream-dim); }
+
+.list { display: flex; flex-direction: column; border: 1px solid var(--line); }
+.item {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono); font-size: 11px;
+  word-break: break-all;
+}
+.item:last-child { border-bottom: none; }
+.item:hover { background: var(--blue-soft); }
+.del {
+  width: 18px; height: 18px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  border: 1px solid var(--line); background: none;
+  color: var(--cream-dim); cursor: pointer; font-size: 12px; line-height: 1;
+}
+.del:hover { background: var(--danger); border-color: var(--danger); color: #fff; }
+.empty { padding: 10px 8px; font-family: var(--mono); font-size: 10px; color: var(--cream-dim); }
+
+.addrow { display: flex; gap: 6px; }
+.addrow input { flex: 1; }
+
+input[type="text"], input[type="number"] {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, .4);
+  color: var(--cream);
+  font-family: var(--mono); font-size: 11px;
+  user-select: text;
+}
+input:focus { outline: none; border-color: var(--blue-2); }
+
+.primary {
+  height: 28px; padding: 0 10px;
+  border: none; background: var(--blue); color: #fff;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 1px;
+  cursor: pointer;
+}
+.primary:hover { background: var(--blue-2); }
+
+.ports { display: flex; gap: 8px; }
+.ports label { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.ports span { font-family: var(--mono); font-size: 9px; letter-spacing: 1px; color: var(--cream-dim); text-transform: uppercase; }
+
+/* ---------- подвал ---------- */
+.foot {
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  font-family: var(--mono); font-size: 9px; letter-spacing: .8px;
+  color: var(--cream-dim);
+  text-align: center;
+}

@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "__MSG_extName__",
+  "short_name": "EVA VPN",
+  "version": "0.3.0",
+  "description": "__MSG_extDesc__",
+  "default_locale": "ru",
+
+  "permissions": ["proxy", "storage", "alarms"],
+  "host_permissions": ["http://127.0.0.1/*"],
+
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"]
+  },
+
+  "action": {
+    "default_title": "EVA VPN",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon.png",
+      "32": "icons/icon.png",
+      "48": "icons/icon.png",
+      "128": "icons/icon.png"
+    }
+  },
+
+  "icons": {
+    "16": "icons/icon.png",
+    "32": "icons/icon.png",
+    "48": "icons/icon.png",
+    "128": "icons/icon.png"
+  },
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "vpn@theeva.ai",
+      "strict_min_version": "121.0"
+    }
+  }
+}

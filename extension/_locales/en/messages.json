@@ -1,0 +1,22 @@
+{
+  "extName":     { "message": "EVA VPN for the browser" },
+  "extDesc":     { "message": "Sends browser traffic into the EVA VPN tunnel. The desktop client is required: it holds the connection." },
+  "on":          { "message": "BROWSER PROTECTED" },
+  "off":         { "message": "BROWSER NOT PROTECTED" },
+  "direct":      { "message": "direct" },
+  "appChecking": { "message": "checking the app…" },
+  "appOn":       { "message": "the app is up" },
+  "appOff":      { "message": "the app is not running" },
+  "hint":        { "message": "Protects the browser only" },
+  "hintNoApp":   { "message": "Start EVA VPN — it holds the proxy" },
+  "rules":       { "message": "Rules" },
+  "bypassTitle": { "message": "// outside the tunnel" },
+  "bypassNote":  { "message": "The browser opens these addresses directly even while the extension is on. Useful for banks and sites that object to a foreign address." },
+  "bypassEmpty": { "message": "the list is empty" },
+  "add":         { "message": "ADD" },
+  "remove":      { "message": "Remove" },
+  "portsTitle":  { "message": "// app ports" },
+  "proxyPort":   { "message": "Proxy" },
+  "apiPort":     { "message": "API" },
+  "portsNote":   { "message": "Only change these if you changed the port in the desktop app." }
+}
