@@ -6,20 +6,66 @@ const api = window.eva;
 let state = null;
 
 /* ------------------------------------------------------------------ */
+/* Язык                                                                */
+/* ------------------------------------------------------------------ */
+
+let lang = 'ru';
+/** Перевод. До первого applyLang — тождество, то есть русский оригинал. */
+let t = (s) => s;
+
+/**
+ * Статический текст разметки. Оригиналы снимаются один раз, до первой
+ * отрисовки: иначе в «оригинал» попало бы уже подставленное значение
+ * (например, имя ключа вместо «ключ не добавлен»).
+ */
+let i18nNodes = null;
+
+function collectI18n() {
+  i18nNodes = [];
+  const cyr = /[А-Яа-яЁё]/;
+  const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    if (n.nodeValue && cyr.test(n.nodeValue)) i18nNodes.push({ node: n, orig: n.nodeValue });
+  }
+  for (const el of document.querySelectorAll('[aria-label],[title],[placeholder]')) {
+    for (const a of ['aria-label', 'title', 'placeholder']) {
+      const v = el.getAttribute(a);
+      if (v && cyr.test(v)) i18nNodes.push({ el, attr: a, orig: v });
+    }
+  }
+}
+
+function applyLang(next) {
+  lang = next;
+  t = window.I18N.translator(lang);
+  if (!i18nNodes) collectI18n();
+  for (const item of i18nNodes) {
+    // пробелы по краям сохраняем: в разметке они держат вёрстку
+    const lead = item.orig.match(/^\s*/)[0];
+    const tail = item.orig.match(/\s*$/)[0];
+    // Абзацы в разметке разбиты на строки, а в словаре записаны одной.
+    // Без схлопывания пробелов такой текст просто не находится.
+    const value = t(item.orig.trim().replace(/\s+/g, ' '));
+    if (item.node) item.node.nodeValue = lead + value + tail;
+    else item.el.setAttribute(item.attr, value);
+  }
+  document.documentElement.lang = lang;
+}
+/* ------------------------------------------------------------------ */
 /* Утилиты                                                             */
 /* ------------------------------------------------------------------ */
 
 function fmtSpeed(bytes) {
-  if (bytes < 1024) return bytes + ' Б/с';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(bytes < 10240 ? 1 : 0) + ' КБ/с';
-  return (bytes / 1048576).toFixed(1) + ' МБ/с';
+  if (bytes < 1024) return bytes + t(' Б/с');
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(bytes < 10240 ? 1 : 0) + t(' КБ/с');
+  return (bytes / 1048576).toFixed(1) + t(' МБ/с');
 }
 
 function fmtBytes(bytes) {
-  if (bytes < 1024) return bytes + ' Б';
-  if (bytes < 1048576) return (bytes / 1024).toFixed(0) + ' КБ';
-  if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' МБ';
-  return (bytes / 1073741824).toFixed(2) + ' ГБ';
+  if (bytes < 1024) return bytes + t(' Б');
+  if (bytes < 1048576) return (bytes / 1024).toFixed(0) + t(' КБ');
+  if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + t(' МБ');
+  return (bytes / 1073741824).toFixed(2) + t(' ГБ');
 }
 
 function fmtUptime(ms) {
@@ -34,7 +80,7 @@ function fmtUptime(ms) {
 let toastTimer = null;
 function toast(text, kind) {
   const el = $('toast');
-  el.textContent = text;
+  el.textContent = t(text);
   el.className = 'toast show' + (kind ? ' ' + kind : '');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => (el.className = 'toast'), 2600);
@@ -85,7 +131,7 @@ function openPalette(chip, id, active) {
   const pop = $('palettePop');
   pop.innerHTML = KEY_COLORS.map(
     ([hex, name]) =>
-      `<button class="swatch${hex === active ? ' active' : ''}" data-color="${hex}" data-for="${id}" style="background:${hex}" title="${name}"></button>`
+      `<button class="swatch${hex === active ? ' active' : ''}" data-color="${hex}" data-for="${id}" style="background:${hex}" title="${t(name)}"></button>`
   ).join('');
   pop.hidden = false;
 
@@ -112,6 +158,7 @@ function closePalette() {
 
 function render(s) {
   state = s;
+  if (s.lang && s.lang !== lang) applyLang(s.lang);
   const running = s.state === 'running';
   const busy = s.state === 'starting' || s.state === 'stopping';
 
@@ -123,39 +170,39 @@ function render(s) {
   document.body.classList.toggle('locked', locked);
 
   $('statusText').textContent = busy
-    ? (s.state === 'starting' ? 'ПОДКЛЮЧЕНИЕ' : 'ОТКЛЮЧЕНИЕ')
+    ? (s.state === 'starting' ? t('ПОДКЛЮЧЕНИЕ') : t('ОТКЛЮЧЕНИЕ'))
     : running
-      ? 'ЗАЩИЩЕНО'
+      ? t('ЗАЩИЩЕНО')
       : locked
-        ? 'СЕТЬ ЗАБЛОКИРОВАНА'
-        : 'НЕ ЗАЩИЩЕНО';
+        ? t('СЕТЬ ЗАБЛОКИРОВАНА')
+        : t('НЕ ЗАЩИЩЕНО');
 
   const p = s.profile;
   if (locked) {
-    $('subText').textContent = '// killswitch держит трафик — нажмите сердце, чтобы снять';
+    $('subText').textContent = t('// killswitch держит трафик — нажмите сердце, чтобы снять');
   } else if (running && p) {
-    $('subText').textContent = '// ' + p.name + ' · ' + (s.mode === 'tun' ? 'туннель' : 'прокси');
+    $('subText').textContent = '// ' + p.name + ' · ' + (s.mode === 'tun' ? t('туннель') : t('прокси'));
   } else if (p) {
     $('subText').textContent = '// ' + p.name;
   } else {
-    $('subText').textContent = '// ключ не добавлен';
+    $('subText').textContent = t('// ключ не добавлен');
   }
 
   // служебная строка
   const guard = [];
   if (s.settings.killSwitch) guard.push('KILLSWITCH');
-  if (s.settings.vpnPriority) guard.push('ПРИОРИТЕТ');
+  if (s.settings.vpnPriority) guard.push(t('ПРИОРИТЕТ'));
   if (s.settings.blockIpv6) guard.push('IPV6 OFF');
-  $('stripMode').textContent = '// ' + (s.settings.mode === 'tun' ? 'туннель' : 'прокси');
-  $('stripGuard').textContent = guard.length ? '// ' + guard.join(' · ') : '// защита выкл';
+  $('stripMode').textContent = '// ' + (s.settings.mode === 'tun' ? t('туннель') : t('прокси'));
+  $('stripGuard').textContent = guard.length ? '// ' + guard.join(' · ') : t('// защита выкл');
   $('stripGuard').classList.toggle('on', running && guard.length > 0);
 
   $('applyBar').hidden = !s.pendingRestart;
   $('metrics').hidden = !running;
-  $('keyVal').textContent = p ? keyIdOf(p) : 'ключ не добавлен';
+  $('keyVal').textContent = p ? keyIdOf(p) : t('ключ не добавлен');
   $('version').textContent = 'v' + s.version;
-  $('aboutVer').textContent = 'ВЕРСИЯ ' + s.version + ' · SING-BOX';
-  $('keysCount').textContent = s.profiles.length ? s.profiles.length + ' шт.' : 'нет';
+  $('aboutVer').textContent = t('ВЕРСИЯ ') + s.version + ' · SING-BOX';
+  $('keysCount').textContent = s.profiles.length ? s.profiles.length + t(' шт.') : t('нет');
 
   applyColor(p && p.color);
 
@@ -170,7 +217,141 @@ function render(s) {
 
   renderKeys(s);
   renderBlocks(s);
+  renderSplit(s);
+  renderUpdate(s.update);
+  if (s.justUpdated) showThanks(s.justUpdated);
   if (panelStack.includes('panelAccount')) renderAccount();
+}
+
+/* ------------------------------------------------------------------ */
+/* Раздельное туннелирование                                           */
+/* ------------------------------------------------------------------ */
+
+const SPLIT_ROW = {
+  off: 'выключено',
+  exclude: 'мимо VPN: ',
+  include: 'через VPN только: '
+};
+
+function renderSplit(s) {
+  const mode = s.settings.splitMode || 'off';
+  const apps = s.settings.splitApps || [];
+
+  document.querySelectorAll('input[name="splitMode"]').forEach((r) => {
+    r.checked = r.value === mode;
+  });
+
+  $('splitRow').textContent =
+    mode === 'off' || !apps.length ? t(SPLIT_ROW.off) : t(SPLIT_ROW[mode]) + apps.length + t(' шт.');
+
+  const box = $('splitList');
+  if (!apps.length) {
+    box.innerHTML = t('<div class="appempty">список пуст — режим не действует</div>');
+    return;
+  }
+  box.innerHTML = apps
+    .map(
+      (name) =>
+        '<div class="appitem"><span>' + esc(name) + '</span>' +
+        '<button class="appdel" data-app="' + esc(name) + t('" aria-label="Убрать">') +
+        '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>'
+    )
+    .join('');
+}
+
+async function splitAddTyped() {
+  const el = $('splitName');
+  const text = el.value.trim();
+  if (!text) return;
+  const r = await api.splitAdd(text);
+  el.value = '';
+  render(await api.getState());
+  toast(r.added ? t('Добавлено: ') + r.added : t('Уже в списке'), r.added ? 'ok' : 'err');
+}
+/* ------------------------------------------------------------------ */
+/* Обновление                                                          */
+/* ------------------------------------------------------------------ */
+
+let upd = null;
+
+/** Что делает большая кнопка в каждом из состояний. */
+const UPD_BUTTON = {
+  idle:        { text: 'ПРОВЕРИТЬ', on: true },
+  checking:    { text: 'ПРОВЕРЯЮ…', on: false },
+  available:   { text: 'УСТАНОВИТЬ', on: true },
+  downloading: { text: 'ЗАГРУЖАЮ…', on: false },
+  ready:       { text: 'ПЕРЕЗАПУСТИТЬ И ПОСТАВИТЬ', on: true },
+  installing:  { text: 'УСТАНАВЛИВАЮ…', on: false },
+  error:       { text: 'ПОПРОБОВАТЬ СНОВА', on: true }
+};
+
+function renderUpdate(u) {
+  if (!u) return;
+  upd = u;
+  const has = Boolean(u.latest);
+
+  // намёки снаружи панели
+  $('menuDot').hidden = !has;
+  $('rowUpdate').hidden = !has;
+  if (has) $('updateRow').textContent = t('версия ') + u.latest.version + t(' готова к установке');
+
+  $('updFrom').textContent = 'v' + u.current;
+  $('updTo').textContent = has ? 'v' + u.latest.version : 'v' + u.current;
+
+  const hint = $('updHint');
+  if (u.state === 'error') hint.textContent = t('Не получилось: ') + (u.error || t('без описания'));
+  else if (u.state === 'checking') hint.textContent = t('Смотрю, нет ли новой версии…');
+  else if (u.state === 'installing') hint.textContent = t('Запускаю установщик. Приложение сейчас закроется и откроется заново.');
+  else if (u.state === 'ready') hint.textContent = t('Файл загружен и проверен по контрольной сумме. Можно ставить.');
+  else if (has) {
+    const mb = (u.latest.size / 1048576).toFixed(1);
+    hint.textContent = t('Скачать нужно ') + mb + t(' МБ. ') +
+      (u.latest.notes ? u.latest.notes.split('\n')[0] : t('Установка идёт поверх текущей версии.'));
+  } else {
+    hint.textContent = u.error
+      ? t('Проверить не вышло: ') + u.error
+      : t('У вас последняя версия.');
+  }
+
+  // полоса прогресса
+  const p = u.progress;
+  const showProg = u.state === 'downloading' && p;
+  $('updProg').hidden = !showProg;
+  if (showProg) {
+    $('updFill').style.width = p.percent + '%';
+    $('updPct').textContent = p.percent + '%';
+    $('updBytes').textContent = fmtBytes(p.received) + t(' из ') + fmtBytes(p.total);
+    $('updSpeed').textContent = p.speed ? fmtSpeed(p.speed) : '';
+  }
+
+  const btn = UPD_BUTTON[u.state] || UPD_BUTTON.idle;
+  $('btnUpdGo').textContent = t(btn.text);
+  $('btnUpdGo').disabled = !btn.on;
+  $('btnUpdCancel').hidden = u.state !== 'downloading';
+}
+
+async function updateAction() {
+  if (!upd) return;
+  if (upd.state === 'available') return void api.updateDownload();
+  if (upd.state === 'ready') {
+    const r = await api.updateInstall();
+    if (!r.ok) toast(r.error, 'err');
+    return;
+  }
+  // idle и error — обе ведут к повторной проверке
+  const s = await api.updateCheck();
+  renderUpdate(s);
+  if (!s.latest && !s.error) toast(t('Установлена последняя версия'), 'ok');
+}
+
+let thanksShown = false;
+
+function showThanks(m) {
+  if (thanksShown) return;
+  thanksShown = true;
+  $('thanksVer').textContent = t('Версия ') + m.to + t(' на месте. Ключи, вход в кабинет и настройки остались как были.');
+  $('modalThanks').classList.add('show');
+  api.updateSeen();
 }
 
 /* ------------------------------------------------------------------ */
@@ -182,8 +363,8 @@ function renderBlocks(s) {
   if (!box || !s.modules) return;
 
   const groups = [
-    ['// что режем', 'reject'],
-    ['// что пускаем мимо vpn', 'direct']
+    [t('// что режем'), 'reject'],
+    [t('// что пускаем мимо vpn'), 'direct']
   ];
   box.innerHTML = groups
     .map(([label, action]) => {
@@ -202,7 +383,7 @@ function renderBlocks(s) {
     .join('');
 
   const on = s.modules.filter((m) => s.settings[m.key]).length;
-  $('blocksCount').textContent = on + ' из ' + s.modules.length + ' включено';
+  $('blocksCount').textContent = on + t(' из ') + s.modules.length + t(' включено');
 }
 
 let siteData = null;
@@ -212,18 +393,17 @@ let needCode = false;
 function accountLoginHtml(error) {
   return `
     <div class="group">
-      <div class="glabel">// вход в кабинет</div>
-      <label class="field"><span>Почта</span><input type="email" id="siteEmail" spellcheck="false" autocomplete="off" /></label>
-      <label class="field"><span>Пароль</span><input type="password" id="sitePass" autocomplete="off" /></label>
-      ${needCode ? '<label class="field"><span>Код 2FA</span><input type="text" id="siteCode" inputmode="numeric" autocomplete="off" /></label>' : ''}
+      <div class="glabel">${t('// вход в кабинет')}</div>
+      <label class="field"><span>${t('Почта')}</span><input type="email" id="siteEmail" spellcheck="false" autocomplete="off" /></label>
+      <label class="field"><span>${t('Пароль')}</span><input type="password" id="sitePass" autocomplete="off" /></label>
+      ${needCode ? t('<label class="field"><span>Код 2FA</span><input type="text" id="siteCode" inputmode="numeric" autocomplete="off" /></label>') : ''}
       ${error ? `<p class="note" style="color:var(--danger)">${esc(error)}</p>` : ''}
       <div class="btnrow" style="padding:8px 10px 10px">
-        <button class="ghost" data-link="https://vpn.theeva.ai/login">РЕГИСТРАЦИЯ</button>
-        <button class="primary" id="siteLoginBtn">ВОЙТИ</button>
+        <button class="ghost" data-link="https://vpn.theeva.ai/login">${t('РЕГИСТРАЦИЯ')}</button>
+        <button class="primary" id="siteLoginBtn">${t('ВОЙТИ')}</button>
       </div>
     </div>
-    <p class="hint">Вход тот же, что на сайте. После входа ключ выдаётся прямо здесь —
-    копировать ссылку вручную больше не нужно.</p>`;
+    <p class="hint">${t('Вход тот же, что на сайте. После входа ключ выдаётся прямо здесь — копировать ссылку вручную больше не нужно.')}</p>`;
 }
 
 const POOL_NAMES = {
@@ -240,14 +420,14 @@ function accountDashHtml(d) {
   const srv = d.servers;
 
   const rows = [];
-  rows.push('<div class="accrow"><span>Аккаунт</span><b>' + esc(me.displayName || '—') + '</b></div>');
-  rows.push('<div class="accrow"><span>Тариф</span><b>' + (plan ? esc(plan.nameRu) : 'нет') + '</b></div>');
-  rows.push('<div class="accrow"><span>Баланс</span><b>' + (me.balanceRub != null ? me.balanceRub + ' ₽' : '—') + '</b></div>');
+  rows.push(t('<div class="accrow"><span>Аккаунт</span><b>') + esc(me.displayName || '—') + '</b></div>');
+  rows.push(t('<div class="accrow"><span>Тариф</span><b>') + (plan ? esc(plan.nameRu) : t('нет')) + '</b></div>');
+  rows.push(t('<div class="accrow"><span>Баланс</span><b>') + (me.balanceRub != null ? me.balanceRub + ' ₽' : '—') + '</b></div>');
   if (me.daysUnlimited) {
-    rows.push('<div class="accrow"><span>Срок</span><b>без ограничения</b></div>');
+    rows.push(t('<div class="accrow"><span>Срок</span><b>без ограничения</b></div>'));
   } else if (me.expiresAt) {
     rows.push(
-      '<div class="accrow"><span>Осталось</span><b>' + me.daysLeft + ' дн. · до ' +
+      t('<div class="accrow"><span>Осталось</span><b>') + me.daysLeft + t(' дн. · до ') +
       new Date(me.expiresAt).toLocaleDateString('ru-RU') + '</b></div>'
     );
   }
@@ -255,10 +435,10 @@ function accountDashHtml(d) {
     const used = key && key.trafficUsedGb != null ? key.trafficUsedGb : (srv && srv.trafficUsedGb) || 0;
     if (plan.trafficGb >= 99999) {
       // безлимит на спец-тарифах: полоса тут только вводит в заблуждение
-      rows.push('<div class="accrow"><span>Трафик</span><b>' + used + ' ГБ · без ограничения</b></div>');
+      rows.push(t('<div class="accrow"><span>Трафик</span><b>') + used + t(' ГБ · без ограничения</b></div>'));
     } else {
       const pct = Math.min(100, Math.round((used / plan.trafficGb) * 100));
-      rows.push('<div class="accrow"><span>Трафик</span><b>' + used + ' из ' + plan.trafficGb + ' ГБ</b></div>');
+      rows.push(t('<div class="accrow"><span>Трафик</span><b>') + used + t(' из ') + plan.trafficGb + t(' ГБ</b></div>'));
       rows.push('<div class="accbar"><i style="width:' + pct + '%"></i></div>');
     }
   }
@@ -266,13 +446,15 @@ function accountDashHtml(d) {
   const current = (srv && srv.currentServer) || (key && key.server);
   const currentLabel = current
     ? [current.flagEmoji, current.cityName].filter(Boolean).join(' ')
-    : 'ключ ещё не выдан';
+    : t('ключ ещё не выдан');
 
   let serversHtml = '';
   if (srv && srv.options && srv.options.length) {
     serversHtml = srv.options
       .map((opt) => {
-        const [name, hint] = POOL_NAMES[opt.kind] || [opt.kind, ''];
+        const [rawName, rawHint] = POOL_NAMES[opt.kind] || [opt.kind, ''];
+        const name = t(rawName);
+        const hint = t(rawHint);
         const members = (opt.members || [])
           .map((m) => {
             const cur = srv.currentServerId && m.choice.endsWith('#' + srv.currentServerId);
@@ -282,37 +464,37 @@ function accountDashHtml(d) {
           .join('');
         return (
           '<div class="srvgroup"><div class="srvhead"><span>' + esc(name) + ' · ' + esc(hint) + '</span>' +
-          `<button class="srvauto" data-choice="${esc(opt.choice)}">АВТО</button></div>` +
+          `<button class="srvauto" data-choice="${esc(opt.choice)}">${t('АВТО')}</button></div>` +
           (members ? '<div class="srvlist">' + members + '</div>' : '') +
           '</div>'
         );
       })
       .join('');
     if (srv && !srv.manualAllowed) {
-      serversHtml += '<p class="note">Выбор конкретной страны доступен на тарифе PRO и выше — ' +
-        'сейчас работает автоподбор внутри режима.</p>';
+      serversHtml += t('<p class="note">Выбор конкретной страны доступен на тарифе PRO и выше — ') +
+        t('сейчас работает автоподбор внутри режима.</p>');
     }
   }
 
   return `
     <div class="group">
-      <div class="glabel">// аккаунт</div>
+      <div class="glabel">${t('// аккаунт')}</div>
       <div class="acccard">${rows.join('')}</div>
     </div>
     <div class="group">
-      <div class="glabel">// ключ для этого компьютера</div>
+      <div class="glabel">${t('// ключ для этого компьютера')}</div>
       <div class="acccard">
-        <div class="accrow"><span>Сервер</span><b>${esc(currentLabel)}</b></div>
+        <div class="accrow"><span>${t('Сервер')}</span><b>${esc(currentLabel)}</b></div>
       </div>
       <div class="btnrow" style="padding:0 10px 10px">
-        <button class="primary" id="siteImportBtn">ОБНОВИТЬ КЛЮЧ</button>
+        <button class="primary" id="siteImportBtn">${t('ОБНОВИТЬ КЛЮЧ')}</button>
       </div>
     </div>
-    ${serversHtml ? '<div class="group"><div class="glabel">// сменить сервер</div>' + serversHtml + '</div>' : ''}
-    ${(d.errors || []).length ? '<p class="note" style="color:var(--danger)">' + esc(d.errors.join(' · ')) + '</p>' : ''}
+    ${serversHtml ? t('<div class="group"><div class="glabel">// сменить сервер</div>') + serversHtml + '</div>' : ''}
+    ${(d.errors || []).length ? '<p class="note" style="color:var(--danger)">' + esc(d.errors.map(t).join(' · ')) + '</p>' : ''}
     <div class="btnrow">
-      <button class="ghost" data-link="https://vpn.theeva.ai/login">ОТКРЫТЬ САЙТ</button>
-      <button class="ghost" id="siteLogoutBtn">ВЫЙТИ</button>
+      <button class="ghost" data-link="https://vpn.theeva.ai/login">${t('ОТКРЫТЬ САЙТ')}</button>
+      <button class="ghost" id="siteLogoutBtn">${t('ВЫЙТИ')}</button>
     </div>`;
 }
 
@@ -320,7 +502,7 @@ function renderAccount(error) {
   const box = $('accountBox');
   if (!box || !state) return;
   if (siteBusy) {
-    box.innerHTML = '<div class="emptyhint">ЗАГРУЗКА…</div>';
+    box.innerHTML = t('<div class="emptyhint">ЗАГРУЗКА…</div>');
     return;
   }
   if (!state.site || !state.site.authorized) {
@@ -328,8 +510,8 @@ function renderAccount(error) {
     return;
   }
   if (!siteData) {
-    box.innerHTML = '<div class="emptyhint">' + (error ? esc(error) : 'НЕТ ДАННЫХ') +
-      '<br><br></div><div class="btnrow"><button class="primary" id="siteReloadBtn">ОБНОВИТЬ</button></div>';
+    box.innerHTML = '<div class="emptyhint">' + (error ? esc(error) : t('НЕТ ДАННЫХ')) +
+      t('<br><br></div><div class="btnrow"><button class="primary" id="siteReloadBtn">ОБНОВИТЬ</button></div>');
     return;
   }
   box.innerHTML = accountDashHtml(siteData);
@@ -354,7 +536,7 @@ async function refreshAccount() {
 function renderKeys(s) {
   const box = $('keysList');
   if (!s.profiles.length) {
-    box.innerHTML = '<div class="emptyhint">ПОКА НЕТ НИ ОДНОГО КЛЮЧА<br>Добавьте vless:// или ссылку на подписку</div>';
+    box.innerHTML = t('<div class="emptyhint">ПОКА НЕТ НИ ОДНОГО КЛЮЧА<br>Добавьте vless:// или ссылку на подписку</div>');
     return;
   }
   const subName = (id) => {
@@ -365,13 +547,13 @@ function renderKeys(s) {
     .map((p) => {
       const active = p.id === s.activeId;
       const from = p.source && p.source !== 'manual' ? subName(p.source) : null;
-      const meta = [p.type, p.server + ':' + p.port, from ? 'из ' + from : null].filter(Boolean).join(' · ');
+      const meta = [p.type, p.server + ':' + p.port, from ? t('из ') + from : null].filter(Boolean).join(' · ');
       const color = p.color || DEFAULT_COLOR;
       return `<div class="keyitem">
         <div class="keycard${active ? ' active' : ''}${from ? ' subcard' : ''}" data-id="${p.id}">
-          <button class="kcolor" data-colorbtn="${p.id}" title="Цвет ключа"><i style="background:${color}"></i></button>
+          <button class="kcolor" data-colorbtn="${p.id}" title="${t('Цвет ключа')}"><i style="background:${color}"></i></button>
           <span class="kinfo"><span class="kname">${esc(p.name)}</span><span class="kmeta">${esc(meta)}</span></span>
-          <button class="kdel" data-del="${p.id}" title="Удалить">
+          <button class="kdel" data-del="${p.id}" title="${t('Удалить')}">
             <svg viewBox="0 0 24 24"><path d="M5 7h14M10 11v6M14 11v6M6 7l1 12h10l1-12M9 7V5h6v2"/></svg>
           </button>
         </div>
@@ -428,7 +610,7 @@ async function toggleVpn() {
     toggleBusy = true;
     await api.releaseGuards();
     toggleBusy = false;
-    toast('Блокировка снята', 'ok');
+    toast(t('Блокировка снята'), 'ok');
     render(await api.getState());
     return;
   }
@@ -445,15 +627,20 @@ async function toggleVpn() {
 
 async function addFromInput() {
   const text = $('addInput').value.trim();
-  if (!text) return toast('Вставьте ключ или ссылку', 'err');
+  if (!text) return toast(t('Вставьте ключ или ссылку'), 'err');
   $('btnAdd').disabled = true;
-  $('btnAdd').textContent = 'ЗАГРУЗКА…';
+  $('btnAdd').textContent = t('ЗАГРУЗКА…');
   const res = await api.addKey(text);
   $('btnAdd').disabled = false;
-  $('btnAdd').textContent = 'ДОБАВИТЬ';
+  $('btnAdd').textContent = t('ДОБАВИТЬ');
   if (!res.ok) return toast(res.error, 'err');
   $('addInput').value = '';
-  toast(res.kind === 'sub' ? `Подписка добавлена: ${res.added} серверов` : `Добавлено ключей: ${res.added}`, 'ok');
+  toast(
+    res.kind === 'sub'
+      ? t('Подписка добавлена: ') + res.added + t(' серверов')
+      : t('Добавлено ключей: ') + res.added,
+    'ok'
+  );
   render(await api.getState());
   closePanel();
   if (!panelStack.includes('panelKeys')) openPanel('panelKeys');
@@ -470,15 +657,15 @@ function wire() {
   $('btnMenu').addEventListener('click', () => openPanel('panelMenu'));
 
   $('btnShare').addEventListener('click', async () => {
-    if (!state || !state.profile) return toast('Нет активного ключа', 'err');
+    if (!state || !state.profile) return toast(t('Нет активного ключа'), 'err');
     await api.copyKey(state.profile.id);
-    toast('Ссылка на ключ скопирована', 'ok');
+    toast(t('Ссылка на ключ скопирована'), 'ok');
   });
 
   $('btnCopy').addEventListener('click', () => {
     if (!state || !state.profile) return;
     api.copy(keyIdOf(state.profile));
-    toast('ID ключа скопирован', 'ok');
+    toast(t('ID ключа скопирован'), 'ok');
   });
 
   $('scrim').addEventListener('click', closeAllPanels);
@@ -519,7 +706,7 @@ function wire() {
     const card = e.target.closest('.keycard');
     if (card) {
       render(await api.selectKey(card.dataset.id));
-      toast('Ключ выбран', 'ok');
+      toast(t('Ключ выбран'), 'ok');
     }
   });
 
@@ -530,7 +717,7 @@ function wire() {
       const email = ($('siteEmail') || {}).value;
       const pass = ($('sitePass') || {}).value;
       const code = ($('siteCode') || {}).value;
-      if (!email || !pass) return renderAccount('Заполните почту и пароль');
+      if (!email || !pass) return renderAccount(t('Заполните почту и пароль'));
       siteBusy = true;
       renderAccount();
       const res = await api.siteLogin(email, pass, code);
@@ -543,7 +730,7 @@ function wire() {
       needCode = false;
       render(await api.getState());
       await refreshAccount();
-      toast('Вход выполнен', 'ok');
+      toast(t('Вход выполнен'), 'ok');
       return;
     }
 
@@ -558,10 +745,10 @@ function wire() {
     if (e.target.closest('#siteReloadBtn')) return refreshAccount();
 
     if (e.target.closest('#siteImportBtn')) {
-      toast('Запрашиваю ключ…');
+      toast(t('Запрашиваю ключ…'));
       const res = await api.siteImport();
       if (!res.ok) return toast(res.error, 'err');
-      toast('Ключ обновлён: ' + res.name, 'ok');
+      toast(t('Ключ обновлён: ') + res.name, 'ok');
       render(await api.getState());
       await refreshAccount();
       return;
@@ -569,10 +756,10 @@ function wire() {
 
     const srv = e.target.closest('[data-choice]');
     if (srv) {
-      toast('Меняю сервер…');
+      toast(t('Меняю сервер…'));
       const res = await api.siteSwitch(srv.dataset.choice);
       if (!res.ok) return toast(res.error, 'err');
-      toast('Сервер сменён: ' + res.name, 'ok');
+      toast(t('Сервер сменён: ') + res.name, 'ok');
       render(await api.getState());
       await refreshAccount();
     }
@@ -583,14 +770,14 @@ function wire() {
     if (!el) return;
     const wasRunning = state && state.state === 'running';
     render(await api.setSetting(el.dataset.mod, el.checked));
-    if (wasRunning) toast('Применится после переподключения');
+    if (wasRunning) toast(t('Применится после переподключения'));
   });
 
   $('applyBtn').addEventListener('click', async () => {
-    toast('Переподключаю…');
+    toast(t('Переподключаю…'));
     const res = await api.reapply();
     if (res && res.ok === false && res.error) toast(res.error, 'err');
-    else toast('Изменения применены', 'ok');
+    else toast(t('Изменения применены'), 'ok');
     render(await api.getState());
   });
 
@@ -608,33 +795,33 @@ function wire() {
   });
 
   $('btnRefreshSubs').addEventListener('click', async () => {
-    toast('Обновляю подписки…');
+    toast(t('Обновляю подписки…'));
     const res = await api.updateSubs(null);
     if (!res.ok) return toast(res.error, 'err');
-    toast(`Обновлено серверов: ${res.added}`, 'ok');
+    toast(t('Обновлено серверов: ') + res.added, 'ok');
     render(await api.getState());
   });
 
   $('btnRepair').addEventListener('click', async () => {
-    toast('Восстанавливаю сеть…');
+    toast(t('Восстанавливаю сеть…'));
     const report = await api.repairNetwork(false);
-    toast(report[report.length - 1] || 'Готово', 'ok');
+    toast(report[report.length - 1] || t('Готово'), 'ok');
     render(await api.getState());
   });
 
   $('btnOpenLogs').addEventListener('click', () => api.openLogs());
 
   $('btnSelfTest').addEventListener('click', async () => {
-    toast('Проверяю соединение…');
+    toast(t('Проверяю соединение…'));
     const res = await api.selfTest();
-    if (!res.ok) return toast(res.error || 'Проверка не удалась', 'err');
+    if (!res.ok) return toast(res.error || t('Проверка не удалась'), 'err');
     const t = res.test;
     const foreign = (res.foreign || []).map((x) => x.name).join(', ');
     if (t.ok) {
-      toast('Трафик проходит · ' + (t.delay != null ? t.delay + ' мс' : 'без пинга') +
-        (foreign ? ' · рядом: ' + foreign : ''), 'ok');
+      toast(t('Трафик проходит · ') + (t.delay != null ? t.delay + t(' мс') : t('без пинга')) +
+        (foreign ? t(' · рядом: ') + foreign : ''), 'ok');
     } else {
-      toast('Трафик НЕ проходит' + (foreign ? ' · мешает ' + foreign : '') + ' — смотрите журнал', 'err');
+      toast(t('Трафик НЕ проходит') + (foreign ? t(' · мешает ') + foreign : '') + t(' — смотрите журнал'), 'err');
     }
     loadLogs();
   });
@@ -642,7 +829,7 @@ function wire() {
   $('btnCopyLogs').addEventListener('click', async () => {
     const lines = await api.logs();
     api.copy(lines.join('\n'));
-    toast('Журнал скопирован', 'ok');
+    toast(t('Журнал скопирован'), 'ok');
   });
 
   document.querySelectorAll('input[name="mode"]').forEach((r) =>
@@ -684,6 +871,33 @@ function wire() {
     }
   });
 
+  document.querySelectorAll('input[name="splitMode"]').forEach((r) => {
+    r.addEventListener('change', async () => {
+      if (!r.checked) return;
+      await api.setSetting('splitMode', r.value);
+      render(await api.getState());
+    });
+  });
+  $('btnSplitAdd').addEventListener('click', async () => {
+    const r = await api.splitPick();
+    render(await api.getState());
+    if (r.added) toast(t('Добавлено: ') + r.added, 'ok');
+  });
+  $('btnSplitName').addEventListener('click', splitAddTyped);
+  $('splitName').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') splitAddTyped();
+  });
+  $('splitList').addEventListener('click', async (e) => {
+    const btn = e.target.closest('.appdel');
+    if (!btn) return;
+    render(await api.splitRemove(btn.dataset.app));
+  });
+
+  $('btnUpdGo').addEventListener('click', updateAction);
+  $('btnUpdCancel').addEventListener('click', () => api.updateCancel());
+  $('thanksOk').addEventListener('click', () => $('modalThanks').classList.remove('show'));
+
+  api.on('update', (u) => renderUpdate(u));
   api.on('state', (s) => render(s));
   api.on('stats', (s) => {
     $('mDown').textContent = fmtSpeed(s.down);
@@ -694,11 +908,11 @@ function wire() {
     }
   });
   api.on('ping', ({ delay }) => {
-    $('mPing').textContent = delay ? delay + ' мс' : '—';
+    $('mPing').textContent = delay ? delay + t(' мс') : '—';
   });
   api.on('toast', ({ text, kind }) => toast(text, kind));
   api.on('selftest', (t) => {
-    if (t && !t.ok) toast('Туннель поднят, но трафик не проходит', 'err');
+    if (t && !t.ok) toast(t('Туннель поднят, но трафик не проходит'), 'err');
   });
   api.on('log', () => {
     if (panelStack.includes('panelLogs')) loadLogs();
@@ -708,6 +922,7 @@ function wire() {
 /* ------------------------------------------------------------------ */
 
 (async function init() {
+  collectI18n();
   wire();
   render(await api.getState());
   firstPaint = false;

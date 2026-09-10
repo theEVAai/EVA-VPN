@@ -13,6 +13,10 @@ const { MODULES } = require('./rules');
 const { Site } = require('./site');
 const { LogFile } = require('./logfile');
 const autostart = require('./autostart');
+// словарь живёт рядом с окном: там он подключается тегом script, здесь — require
+const i18n = require('../renderer/i18n');
+const t = i18n.t;
+const { Updater } = require('./updater');
 
 const isDev = !app.isPackaged;
 const ROOT = path.join(__dirname, '..', '..');
@@ -34,9 +38,9 @@ try {
   const exe = process.execPath;
   const built = fs.statSync(app.isPackaged ? exe : __filename).mtime;
   logFile.write(
-    'версия ' + app.getVersion() +
-    ' · сборка от ' + built.toLocaleString('ru-RU') +
-    ' · ' + (app.isPackaged ? 'упакована' : 'режим разработки') +
+    t('версия ') + app.getVersion() +
+    t(' · сборка от ') + built.toLocaleString('ru-RU') +
+    ' · ' + (app.isPackaged ? t('упакована') : t('режим разработки')) +
     ' · ' + exe
   );
 } catch { /* журнал не повод падать */ }
@@ -52,6 +56,8 @@ let tray = null;
 let store = null;
 let core = null;
 let site = null;
+let updater = null;
+let justUpdated = null;   // метка «только что обновились», гасится окном
 let adminRights = false;
 let quitting = false;
 let intended = false;      // пользователь хочет быть подключённым
@@ -126,17 +132,17 @@ function updateTray() {
   const connected = core.state === 'running';
   const p = store.activeProfile();
   tray.setImage(trayIcon(connected));
-  tray.setToolTip('EVA VPN — ' + (connected ? 'подключён' : 'отключён') + (p ? '\n' + p.name : ''));
+  tray.setToolTip('EVA VPN — ' + (connected ? t('подключён') : t('отключён')) + (p ? '\n' + p.name : ''));
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: p ? p.name : 'Ключ не добавлен', enabled: false },
+      { label: p ? p.name : t('Ключ не добавлен'), enabled: false },
       { type: 'separator' },
       {
-        label: connected ? 'Отключить' : 'Подключить',
+        label: connected ? t('Отключить') : t('Подключить'),
         click: () => (connected ? doDisconnect() : doConnect())
       },
       {
-        label: 'Показать окно',
+        label: t('Показать окно'),
         click: () => {
           if (!win) createWindow();
           else {
@@ -147,22 +153,22 @@ function updateTray() {
       },
       { type: 'separator' },
       {
-        label: 'Снять блокировку сети',
+        label: t('Снять блокировку сети'),
         click: async () => {
           await netfix.disableKillSwitch();
           await netfix.restorePriority();
-          send('toast', { text: 'Блокировка снята', kind: 'ok' });
+          send('toast', { text: t('Блокировка снята'), kind: 'ok' });
         }
       },
       {
-        label: 'Восстановить сеть',
+        label: t('Восстановить сеть'),
         click: async () => {
           await netfix.repairNetwork({ deep: false });
-          send('toast', { text: 'Сеть восстановлена', kind: 'ok' });
+          send('toast', { text: t('Сеть восстановлена'), kind: 'ok' });
         }
       },
       {
-        label: 'Выход',
+        label: t('Выход'),
         click: () => {
           quitting = true;
           app.quit();
@@ -189,8 +195,15 @@ function createTray() {
 /* Подключение                                                         */
 /* ------------------------------------------------------------------ */
 
+/** Рабочий код языка: настройка «как в системе» решается по локали Windows. */
+function currentLang() {
+  return i18n.resolve(store.settings.language, app.getLocale());
+}
+
 function snapshot() {
+  const t = i18n.translator(currentLang());
   return {
+    lang: currentLang(),
     state: core.state,
     mode: core.mode,
     error: core.lastError,
@@ -205,8 +218,14 @@ function snapshot() {
     uptime: core.startedAt ? Date.now() - core.startedAt : 0,
     guard: { killSwitch: core.killSwitchOn, priority: core.priorityApplied },
     pendingRestart,
-    modules: MODULES.map((m) => ({ key: m.key, action: m.action, title: m.title, hint: m.hint, badge: m.badge || null })),
-    site: { authorized: Boolean(site && site.authorized) }
+    modules: MODULES.map((m) => ({
+      key: m.key, action: m.action,
+      title: t(m.title), hint: t(m.hint),
+      badge: m.badge ? t(m.badge) : null
+    })),
+    site: { authorized: Boolean(site && site.authorized) },
+    update: updater ? updater.snapshot() : null,
+    justUpdated
   };
 }
 
@@ -219,7 +238,7 @@ let opChain = Promise.resolve();
 
 function serialize(label, fn) {
   const run = async () => {
-    note('операция: ' + label);
+    note(t('операция: ') + label);
     return fn();
   };
   const next = opChain.then(run, run);
@@ -242,19 +261,19 @@ function coreSettings() {
 async function doConnectInner() {
   const profile = store.activeProfile();
   if (!profile) {
-    send('toast', { text: 'Сначала добавьте ключ доступа', kind: 'err' });
-    return { ok: false, error: 'Нет ключа' };
+    send('toast', { text: t('Сначала добавьте ключ доступа'), kind: 'err' });
+    return { ok: false, error: t('Нет ключа') };
   }
   let mode = store.settings.mode;
   if (mode === 'tun' && !adminRights) {
     return { ok: false, error: 'need-admin' };
   }
   intended = true;
-  note('Подключение: ' + profile.name + ' (' + profile.server + ':' + profile.port + '), режим ' + mode);
+  note(t('Подключение: ') + profile.name + ' (' + profile.server + ':' + profile.port + t('), режим ') + mode);
 
   const res = await core.start(profile, mode, coreSettings());
   if (!res.ok) {
-    note('Не удалось подключиться: ' + res.error);
+    note(t('Не удалось подключиться: ') + res.error);
     return res;
   }
 
@@ -266,12 +285,12 @@ async function doConnectInner() {
       const rivals = list.filter((t) => t.defaultRoutes > 0 || t.dns);
       if (!rivals.length) return;
       const names = rivals.map((t) => t.name).join(', ');
-      note('Рядом работает чужой туннель: ' + names + ' (маршрутов по умолчанию: ' +
+      note(t('Рядом работает чужой туннель: ') + names + t(' (маршрутов по умолчанию: ') +
         rivals.map((t) => t.defaultRoutes).join(',') + ', DNS: ' + rivals.map((t) => t.dns || '—').join(',') + ')');
       send('toast', {
         text: store.settings.vpnPriority
-          ? 'Рядом работает ' + names + ' — подавлен на время сессии'
-          : 'Рядом работает ' + names + ' — включите приоритет или выключите соседа',
+          ? t('Рядом работает ') + names + t(' — подавлен на время сессии')
+          : t('Рядом работает ') + names + t(' — включите приоритет или выключите соседа'),
         kind: store.settings.vpnPriority ? 'ok' : 'err'
       });
     });
@@ -288,7 +307,7 @@ async function doConnectInner() {
     // правила брандмауэра и режут. Защита не должна оставлять человека без сети:
     // снимаем её сами и говорим об этом, вместо молчаливого «ЗАЩИЩЕНО».
     if (t.viaCore && core.killSwitchOn) {
-      note('Killswitch блокировал системный трафик — снимаю его');
+      note(t('Killswitch блокировал системный трафик — снимаю его'));
       await netfix.disableKillSwitch();
       core.killSwitchOn = false;
       send('state', snapshot());
@@ -296,14 +315,14 @@ async function doConnectInner() {
       send('selftest', again);
       send('toast', {
         text: again.ok
-          ? 'Killswitch блокировал трафик — снят, соединение работает'
-          : 'Трафик не проходит даже без killswitch — смотрите журнал',
+          ? t('Killswitch блокировал трафик — снят, соединение работает')
+          : t('Трафик не проходит даже без killswitch — смотрите журнал'),
         kind: 'err'
       });
       return;
     }
 
-    send('toast', { text: 'Туннель поднят, но трафик не проходит — смотрите журнал', kind: 'err' });
+    send('toast', { text: t('Туннель поднят, но трафик не проходит — смотрите журнал'), kind: 'err' });
   }, 2500);
 
   return res;
@@ -313,7 +332,7 @@ async function doDisconnectInner() {
   intended = false;
   flaps = [];
   clearTimeout(retryTimer);
-  note('Отключение по команде пользователя');
+  note(t('Отключение по команде пользователя'));
   await core.stop();
   return { ok: true };
 }
@@ -334,25 +353,25 @@ function scheduleRetry() {
   if (flaps.length > FLAP_LIMIT) {
     intended = false;
     clearTimeout(retryTimer);
-    note('Переподключение остановлено: ' + flaps.length + ' обрывов за 10 минут. Смотрите журнал выше.');
-    send('toast', { text: 'Туннель падает раз за разом — переподключение остановлено', kind: 'err' });
+    note(t('Переподключение остановлено: ') + flaps.length + t(' обрывов за 10 минут. Смотрите журнал выше.'));
+    send('toast', { text: t('Туннель падает раз за разом — переподключение остановлено'), kind: 'err' });
     return false;
   }
 
   const delay = RETRY_DELAYS[Math.min(flaps.length - 1, RETRY_DELAYS.length - 1)];
-  note('Обрыв ' + flaps.length + ' из ' + FLAP_LIMIT + ', повтор через ' + Math.round(delay / 1000) + ' с');
+  note(t('Обрыв ') + flaps.length + t(' из ') + FLAP_LIMIT + t(', повтор через ') + Math.round(delay / 1000) + t(' с'));
   clearTimeout(retryTimer);
   retryTimer = setTimeout(() => {
     if (intended && core.state !== 'running') {
-      send('toast', { text: 'Переподключение (' + flaps.length + '/' + FLAP_LIMIT + ')…' });
-      serialize('автоповтор', doConnectInner);
+      send('toast', { text: t('Переподключение (') + flaps.length + '/' + FLAP_LIMIT + ')…' });
+      serialize(t('автоповтор'), doConnectInner);
     }
   }, delay);
   return true;
 }
 
-const doConnect = () => serialize('подключение', doConnectInner);
-const doDisconnect = () => serialize('отключение', doDisconnectInner);
+const doConnect = () => serialize(t('подключение'), doConnectInner);
+const doDisconnect = () => serialize(t('отключение'), doDisconnectInner);
 
 function relaunchAsAdmin() {
   const exe = process.execPath;
@@ -394,7 +413,7 @@ async function fetchSub(url) {
 async function updateSub(sub) {
   const { text, userinfo } = await fetchSub(sub.url);
   const list = parse.parseMany(text);
-  if (!list.length) throw new Error('В подписке нет ключей');
+  if (!list.length) throw new Error(t('В подписке нет ключей'));
   store.replaceSubProfiles(sub.id, list);
   sub.lastUpdate = Date.now();
   sub.userinfo = userinfo;
@@ -433,6 +452,29 @@ function importSiteKey(data) {
 /* IPC                                                                 */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Добавляет программы в список раздельного туннелирования.
+ * Из пути берём только имя файла: игра переезжает между дисками, а правило
+ * должно пережить переезд. Возвращает число действительно новых записей.
+ */
+function addSplitApps(items) {
+  const list = (store.settings.splitApps || []).slice();
+  let added = 0;
+  for (const raw of items) {
+    let name = String(raw || '').trim().replace(/^.*[\\/]/, '');
+    if (!name) continue;
+    if (!/\.exe$/i.test(name)) name += '.exe';
+    if (list.some((x) => x.toLowerCase() === name.toLowerCase())) continue;
+    list.push(name);
+    added++;
+  }
+  if (added) {
+    store.setSetting('splitApps', list);
+    if (core.state === 'running') pendingRestart = true;
+  }
+  return added;
+}
+
 function registerIpc() {
   ipcMain.handle('app:state', () => snapshot());
 
@@ -453,7 +495,7 @@ function registerIpc() {
 
   ipcMain.handle('keys:add', async (_e, text) => {
     const raw = String(text || '').trim();
-    if (!raw) return { ok: false, error: 'Пусто' };
+    if (!raw) return { ok: false, error: t('Пусто') };
 
     if (/^https?:\/\//i.test(raw)) {
       try {
@@ -461,14 +503,14 @@ function registerIpc() {
         const n = await updateSub(sub);
         return { ok: true, added: n, kind: 'sub' };
       } catch (e) {
-        return { ok: false, error: 'Подписка не загрузилась: ' + e.message };
+        return { ok: false, error: t('Подписка не загрузилась: ') + e.message };
       }
     }
 
     const list = parse.parseMany(raw);
     if (!list.length) {
       const one = parse.parseLink(raw);
-      return { ok: false, error: one && one.error ? one.error : 'Не похоже на ключ или ссылку подписки' };
+      return { ok: false, error: one && one.error ? one.error : t('Не похоже на ключ или ссылку подписки') };
     }
     const added = store.addProfiles(list, 'manual');
     return { ok: true, added, kind: 'key' };
@@ -501,7 +543,7 @@ function registerIpc() {
 
   ipcMain.handle('subs:update', async (_e, id) => {
     const list = id ? store.data.subs.filter((s) => s.id === id) : store.data.subs;
-    if (!list.length) return { ok: false, error: 'Нет подписок' };
+    if (!list.length) return { ok: false, error: t('Нет подписок') };
     let total = 0;
     for (const s of list) {
       try {
@@ -520,6 +562,11 @@ function registerIpc() {
 
   ipcMain.handle('settings:set', async (_e, key, value) => {
     store.setSetting(key, value);
+    // язык меняется без переподключения: он ни на что в ядре не влияет
+    if (key === 'language') {
+      i18n.setLang(currentLang());
+      updateTray();
+    }
     if (key === 'autoStart') {
       if (value) await autostart.enable(adminRights);
       else await autostart.disable();
@@ -538,7 +585,7 @@ function registerIpc() {
         });
         core.killSwitchOn = true;
         if (ks && ks.disabledProfiles && ks.disabledProfiles.length) {
-          send('toast', { text: 'Брандмауэр Windows выключен — killswitch не удержит трафик', kind: 'err' });
+          send('toast', { text: t('Брандмауэр Windows выключен — killswitch не удержит трафик'), kind: 'err' });
         }
       } else {
         await netfix.disableKillSwitch();
@@ -566,11 +613,50 @@ function registerIpc() {
     // соединения, поэтому не делаем его исподтишка: копим и ждём кнопку.
     const configKeys = [
       'blockIpv6', 'tunStack', 'allowLan', 'mixedPort', 'dnsRemote', 'dnsDirect',
-      'blockTrackers', 'ruDirect', 'kodikDirect', 'torrentDirect', 'trustedDirect'
+      'blockTrackers', 'ruDirect', 'kodikDirect', 'torrentDirect', 'trustedDirect',
+      'splitMode', 'splitApps'
     ];
     if (running && configKeys.includes(key)) {
       pendingRestart = true;
     }
+    return snapshot();
+  });
+
+  ipcMain.handle('update:state', () => updater.snapshot());
+  // Благодарность показывается один раз: окно гасит метку, когда показало.
+  ipcMain.handle('update:seen', () => { justUpdated = null; return true; });
+  ipcMain.handle('update:check', () => updater.check());
+  ipcMain.handle('update:download', () => updater.download());
+  ipcMain.handle('update:cancel', () => updater.cancel());
+  ipcMain.handle('update:install', () => {
+    // Ставим поверх работающего туннеля: установщик ждёт, пока приложение
+    // закроется, а закрытие снимает killswitch и маршруты. Флагом просим
+    // новую версию подключиться сразу, если сейчас мы были подключены.
+    const res = updater.install({ connect: intended });
+    if (!res.ok) return res;
+    setTimeout(() => { quitting = true; app.quit(); }, 400);
+    return res;
+  });
+
+  ipcMain.handle('split:pick', async () => {
+    const res = await dialog.showOpenDialog(win, {
+      title: t('Выберите программы'),
+      filters: [{ name: t('Программы'), extensions: ['exe'] }],
+      properties: ['openFile', 'multiSelections']
+    });
+    if (res.canceled || !res.filePaths.length) return { ok: true, added: 0 };
+    return { ok: true, added: addSplitApps(res.filePaths) };
+  });
+
+  ipcMain.handle('split:add', (_e, text) =>
+    ({ ok: true, added: addSplitApps(String(text || '').split(/[,;\r\n]+/)) }));
+
+  ipcMain.handle('split:remove', (_e, name) => {
+    const list = (store.settings.splitApps || []).filter(
+      (x) => x.toLowerCase() !== String(name || '').toLowerCase()
+    );
+    store.setSetting('splitApps', list);
+    if (core.state === 'running') pendingRestart = true;
     return snapshot();
   });
 
@@ -596,7 +682,7 @@ function registerIpc() {
   });
 
   ipcMain.handle('site:refresh', async () => {
-    if (!site.authorized) return { ok: false, error: 'Не выполнен вход', code: 'UNAUTHORIZED' };
+    if (!site.authorized) return { ok: false, error: t('Не выполнен вход'), code: 'UNAUTHORIZED' };
     try {
       const data = await site.dashboard('PC');
       return { ok: true, data };
@@ -607,11 +693,11 @@ function registerIpc() {
   });
 
   ipcMain.handle('site:import', async () => {
-    if (!site.authorized) return { ok: false, error: 'Не выполнен вход' };
+    if (!site.authorized) return { ok: false, error: t('Не выполнен вход') };
     try {
       const key = await site.keys('PC');
       const profile = importSiteKey(key);
-      if (!profile) return { ok: false, error: 'Сайт не отдал ключ' };
+      if (!profile) return { ok: false, error: t('Сайт не отдал ключ') };
       if (core.state === 'running') await doConnect();
       return { ok: true, name: profile.name };
     } catch (e) {
@@ -620,7 +706,7 @@ function registerIpc() {
   });
 
   ipcMain.handle('site:switch', async (_e, choice) => {
-    if (!site.authorized) return { ok: false, error: 'Не выполнен вход' };
+    if (!site.authorized) return { ok: false, error: t('Не выполнен вход') };
     try {
       await site.switchServer(choice, 'PC');
       const key = await site.keys('PC');
@@ -642,12 +728,12 @@ function registerIpc() {
   });
 
   ipcMain.handle('net:release', () =>
-    serialize('снятие блокировки', async () => {
+    serialize(t('снятие блокировки'), async () => {
       await netfix.disableKillSwitch();
       await netfix.restorePriority();
       core.killSwitchOn = false;
       core.priorityApplied = false;
-      note('Блокировка сети снята вручную');
+      note(t('Блокировка сети снята вручную'));
       send('state', snapshot());
       return true;
     })
@@ -661,7 +747,7 @@ function registerIpc() {
   });
 
   ipcMain.handle('net:selftest', async () => {
-    if (core.state !== 'running') return { ok: false, error: 'Туннель не запущен' };
+    if (core.state !== 'running') return { ok: false, error: t('Туннель не запущен') };
     const t = await core.selfTest();
     const tunnels = await netfix.foreignTunnels();
     return { ok: true, test: t, foreign: tunnels };
@@ -694,13 +780,16 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     store = new Store(paths.userData);
     core = new Core(paths);
+    i18n.setLang(currentLang());
     site = new Site(paths.userData, safeStorage, store.settings.siteBase || undefined);
+    updater = new Updater({ version: app.getVersion(), userData: paths.userData, log: note });
+    updater.on('update', (u) => send('update', u));
 
     core.on('state', (s) => {
       send('state', snapshot());
       updateTray();
       if (s.state === 'error') {
-        note('Ошибка ядра: ' + (s.error || 'без описания'));
+        note(t('Ошибка ядра: ') + (s.error || t('без описания')));
         if (!scheduleRetry() && s.error) send('toast', { text: s.error, kind: 'err' });
       }
     });
@@ -713,10 +802,10 @@ if (!app.requestSingleInstanceLock()) {
 
     // если прошлый запуск завершился аварийно — снимаем оставшиеся блокировки
     const leftovers = await netfix.guardCleanup();
-    leftovers.forEach((l) => core.log('Восстановление после сбоя: ' + l));
+    leftovers.forEach((l) => core.log(t('Восстановление после сбоя: ') + l));
 
     if (!fs.existsSync(paths.coreExe)) {
-      dialog.showErrorBox('EVA VPN', 'Не найдено ядро sing-box:\n' + paths.coreExe);
+      dialog.showErrorBox('EVA VPN', t('Не найдено ядро sing-box:\n') + paths.coreExe);
     }
 
     registerIpc();
@@ -729,9 +818,23 @@ if (!app.requestSingleInstanceLock()) {
       if (real !== store.settings.autoStart) store.setSetting('autoStart', real);
     } catch { /* не критично */ }
 
-    if (store.settings.autoConnect && store.activeProfile()) {
+    // Метку оставила прошлая версия перед установкой. Держим её в снимке,
+    // а не шлём событием: окно может ещё не успеть подписаться.
+    justUpdated = updater.takeMarker();
+    if (justUpdated) {
+      note(t('Обновление установлено: ') + justUpdated.from + ' -> ' + justUpdated.to);
+    }
+
+    const wantConnect =
+      (justUpdated && justUpdated.connect) || store.settings.autoConnect;
+    if (wantConnect && store.activeProfile()) {
       setTimeout(() => doConnect(), 800);
     }
+
+    // Обновления смотрим через полминуты после запуска и дальше раз в шесть часов
+    const SIX_HOURS = 6 * 3600 * 1000;
+    setTimeout(() => updater.check(), 30000);
+    setInterval(() => updater.check(), SIX_HOURS);
 
     // подписки обновляем при старте (если давно) и раз в 12 часов
     const HALF_DAY = 12 * 3600 * 1000;

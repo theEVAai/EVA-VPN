@@ -22,6 +22,8 @@ const DEFAULTS = {
     blockIpv6: true,
     allowLan: false,
     bypassPrivate: true,
+    splitMode: 'off',          // off | exclude | include
+    splitApps: [],
     tunStack: 'gvisor',          // gvisor | mixed | system
     mtu: 9000,
     mixedPort: 2080,
@@ -29,6 +31,7 @@ const DEFAULTS = {
     dnsRemote: 'https://1.1.1.1/dns-query',
     dnsDirect: '77.88.8.8',
     logLevel: 'info',
+    language: 'auto',             // auto | ru | en
     minimizeToTray: true,
     siteBase: ''            // пусто = https://vpn.theeva.ai
   }

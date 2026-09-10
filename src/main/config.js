@@ -6,6 +6,7 @@
 
 const path = require('path');
 const { MODULES } = require('./rules');
+const { t } = require('../renderer/i18n');
 
 const TUN_IPV4 = '172.19.0.1/30';
 const TUN_IPV6 = 'fdfe:dcba:9876::1/126';
@@ -40,7 +41,7 @@ function buildOutbound(p, tag) {
       if (p.obfs && p.obfs.type) out.obfs = { type: p.obfs.type, password: p.obfs.password || '' };
       break;
     default:
-      throw new Error('Неподдерживаемый тип ключа: ' + p.type);
+      throw new Error(t('Неподдерживаемый тип ключа: ') + p.type);
   }
 
   if (p.tls && p.tls.enabled) {
@@ -86,6 +87,8 @@ function buildConfig({ profile, mode, opts, paths }) {
       tunName: 'EVA',
       mtu: 9000,
       bypassPrivate: true,
+      splitMode: 'off',
+      splitApps: [],
       dnsRemote: 'https://1.1.1.1/dns-query',
       dnsDirect: '77.88.8.8',
       logLevel: 'info'
@@ -194,6 +197,33 @@ function buildConfig({ profile, mode, opts, paths }) {
     }
   }
 
+  // --- раздельное туннелирование по программам ---
+  //
+  // Сопоставляем регулярным выражением по пути, а не полем process_name.
+  // Причина измерена: process_name сравнивает имя посимвольно, и запись
+  // ESCAPEFROMTARKOV.EXE не совпадает с файлом EscapeFromTarkov.exe —
+  // правило молча не срабатывает, а человек уверен, что игра выведена.
+  // Флаг (?i) снимает вопрос регистра целиком.
+  const splitApps = [];
+  for (const raw of (Array.isArray(o.splitApps) ? o.splitApps : [])) {
+    const name = String(raw || '').trim().replace(/^.*[\\/]/, '');
+    if (name && !splitApps.some((x) => x.toLowerCase() === name.toLowerCase())) splitApps.push(name);
+  }
+  const splitMode = splitApps.length ? o.splitMode : 'off';
+  // [\/] — «слэш любого вида»: привязка к имени файла, чтобы program.exe
+  // не ловился внутри notprogram.exe
+  const splitRegex = splitApps.map(
+    (n) => '(?i)[\\\\/]' + n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$'
+  );
+
+  // Исключение ставим раньше блокировок: программа выведена из туннеля
+  // целиком, её не должны трогать ни правила обхода, ни фильтры. Это и
+  // нужно играм с античитом — им важно, чтобы адрес не менялся вообще.
+  if (splitMode === 'exclude') {
+    routeRules.push({ process_path_regex: splitRegex.slice(), action: 'route', outbound: 'direct' });
+    dnsRules.push({ process_path_regex: splitRegex.slice(), action: 'route', server: 'dns-direct' });
+  }
+
   // --- модули блокировок и обходов (см. rules.js) ---
   // DIRECT-правила идут первыми: то, что уходит мимо VPN, важнее того, что режется
   for (const mod of MODULES.filter((m) => m.action === 'direct')) {
@@ -227,6 +257,16 @@ function buildConfig({ profile, mode, opts, paths }) {
       routeRules.push({ domain_suffix: mod.domains.slice(), action: 'reject' });
       dnsRules.push({ domain_suffix: mod.domains.slice(), action: 'predefined', rcode: 'NXDOMAIN' });
     }
+  }
+
+  // Режим «только выбранные»: перечисленные уходят в туннель, всё
+  // остальное — мимо. Правило стоит после блокировок, поэтому фильтры
+  // на туннельные программы продолжают действовать.
+  if (splitMode === 'include') {
+    routeRules.push({ process_path_regex: splitRegex.slice(), action: 'route', outbound: 'proxy' });
+    dnsRules.push({ process_path_regex: splitRegex.slice(), action: 'route', server: 'dns-remote' });
+    config.route.final = 'direct';
+    config.dns.final = 'dns-direct';
   }
 
   if (!o.ipv6) {

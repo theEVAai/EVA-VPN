@@ -8,6 +8,7 @@ const path = require('path');
 
 const { buildConfig, TUN_IPV4 } = require('./config');
 const netfix = require('./netfix');
+const { t } = require('../renderer/i18n');
 
 const LOG_LIMIT = 500;
 
@@ -60,8 +61,8 @@ class Core extends EventEmitter {
     // адаптер и один файл кэша. Именно так рождались «Cannot create a file
     // when that file already exists» и «initialize cache-file: timeout».
     if (this.starting) {
-      this.log('Запуск уже идёт — повторный запрос отброшен');
-      return { ok: false, error: 'Подключение уже выполняется' };
+      this.log(t('Запуск уже идёт — повторный запрос отброшен'));
+      return { ok: false, error: t('Подключение уже выполняется') };
     }
     this.starting = true;
     try {
@@ -91,7 +92,7 @@ class Core extends EventEmitter {
       // адаптер прошлой сессии умирает не мгновенно; если начать раньше,
       // новое ядро молча зависнет на создании туннеля
       const gone = await netfix.waitAdapterGone(settings.tunName || netfix.tunAlias());
-      if (!gone) this.log('Прошлый адаптер ещё в системе — поднимаем туннель поверх');
+      if (!gone) this.log(t('Прошлый адаптер ещё в системе — поднимаем туннель поверх'));
     }
 
     const cfg = buildConfig({
@@ -103,7 +104,7 @@ class Core extends EventEmitter {
     const file = this.configPath();
     fs.writeFileSync(file, JSON.stringify(cfg, null, 2), 'utf8');
 
-    this.log('$ sing-box run  (' + (mode === 'tun' ? 'туннель' : 'системный прокси') + ', ' + profile.name + ')');
+    this.log('$ sing-box run  (' + (mode === 'tun' ? t('туннель') : t('системный прокси')) + ', ' + profile.name + ')');
 
     this.proc = spawn(this.paths.coreExe, ['run', '-c', file, '--disable-color'], {
       cwd: path.dirname(this.paths.coreExe),
@@ -115,7 +116,7 @@ class Core extends EventEmitter {
     this.proc.stderr.on('data', (b) => String(b).split(/\r?\n/).forEach((l) => this.log(l)));
 
     this.proc.on('error', (e) => {
-      this.lastError = 'Не удалось запустить ядро: ' + e.message;
+      this.lastError = t('Не удалось запустить ядро: ') + e.message;
       this.log(this.lastError);
       // пока идёт запуск, наружу об ошибке сообщает только сам запуск:
       // иначе снаружи планируется повтор поверх ещё не законченной попытки
@@ -136,7 +137,7 @@ class Core extends EventEmitter {
         this.proxyWasSet = false;
       }
       if (wasRunning) {
-        this.lastError = this.lastError || guessError(this.logs) || ('Ядро завершилось (код ' + code + ')');
+        this.lastError = this.lastError || guessError(this.logs) || (t('Ядро завершилось (код ') + code + ')');
         this.setState('error', { error: this.lastError });
       } else {
         this.setState('stopped');
@@ -146,12 +147,12 @@ class Core extends EventEmitter {
     // создание TUN-адаптера на медленной машине занимает заметно дольше
     const ready = await this.waitReady(mode === 'tun' ? 25000 : 15000);
     if (!ready) {
-      const err = guessError(this.logs) || 'Ядро не ответило вовремя';
-      this.log('Ядро не поднялось: ' + err);
+      const err = guessError(this.logs) || t('Ядро не ответило вовремя');
+      this.log(t('Ядро не поднялось: ') + err);
       await this.stop();
       // wintun иногда не отдаёт устройство с первого раза — вторая попытка обычно проходит
       if (attempt < 2) {
-        this.log('Повторная попытка запуска: убираю хвосты прошлой');
+        this.log(t('Повторная попытка запуска: убираю хвосты прошлой'));
         await netfix.killOrphanCores();
         await netfix.waitProcessGone('sing-box');
         if (mode === 'tun') await netfix.waitAdapterGone(settings.tunName || netfix.tunAlias());
@@ -166,7 +167,7 @@ class Core extends EventEmitter {
     if (mode === 'proxy') {
       await netfix.setSystemProxy(settings.mixedPort || 2080);
       this.proxyWasSet = true;
-      this.log('Системный прокси включён: 127.0.0.1:' + (settings.mixedPort || 2080));
+      this.log(t('Системный прокси включён: 127.0.0.1:') + (settings.mixedPort || 2080));
     }
 
     if (mode === 'tun') {
@@ -181,12 +182,12 @@ class Core extends EventEmitter {
         const demoted = await netfix.applyPriority(alias);
         this.priorityApplied = true;
         this.log(
-          'Приоритет туннеля: метрика 1' +
+          t('Приоритет туннеля: метрика 1') +
           (demoted.length
-            ? ' · подавлены: ' + demoted.map((d) =>
-                d.name + ' (метрика 9000' +
-                (d.routes && d.routes.length ? ', снято маршрутов ' + d.routes.length : '') +
-                (d.dns && d.dns.length ? ', DNS очищен' : '') + ')'
+            ? t(' · подавлены: ') + demoted.map((d) =>
+                d.name + t(' (метрика 9000') +
+                (d.routes && d.routes.length ? t(', снято маршрутов ') + d.routes.length : '') +
+                (d.dns && d.dns.length ? t(', DNS очищен') : '') + ')'
               ).join(', ')
             : '')
         );
@@ -201,11 +202,11 @@ class Core extends EventEmitter {
           tunAddr: TUN_IPV4.split('/')[0]
         });
         this.killSwitchOn = true;
-        this.log('Killswitch включён: исходящий трафик мимо туннеля заблокирован');
+        this.log(t('Killswitch включён: исходящий трафик мимо туннеля заблокирован'));
         if (ks && ks.disabledProfiles && ks.disabledProfiles.length) {
           const msg =
-            'Брандмауэр Windows выключен (' + ks.disabledProfiles.join(', ') +
-            ') — killswitch не удержит трафик. Включите брандмауэр.';
+            t('Брандмауэр Windows выключен (') + ks.disabledProfiles.join(', ') +
+            t(') — killswitch не удержит трафик. Включите брандмауэр.');
           this.log(msg);
           this.emit('notice', msg);
         }
@@ -241,7 +242,7 @@ class Core extends EventEmitter {
     if (this.killSwitchOn) {
       await netfix.disableKillSwitch();
       this.killSwitchOn = false;
-      this.log('Killswitch снят');
+      this.log(t('Killswitch снят'));
     }
     if (this.priorityApplied) {
       await netfix.restorePriority();
@@ -327,7 +328,7 @@ class Core extends EventEmitter {
     if (!ac) return;
     try {
       const r = await fetch('http://127.0.0.1:' + this.clashPort + '/traffic', { signal: ac.signal });
-      if (!r.ok || !r.body) throw new Error('нет потока');
+      if (!r.ok || !r.body) throw new Error(t('нет потока'));
       let tail = '';
       for await (const chunk of r.body) {
         tail += Buffer.from(chunk).toString('utf8');
@@ -399,16 +400,16 @@ class Core extends EventEmitter {
 
     out.ok = Boolean(out.direct);
     out.diagnosis = out.direct
-      ? 'трафик системы идёт через туннель'
+      ? t('трафик системы идёт через туннель')
       : out.viaCore
-        ? 'ядро работает, но трафик системы наружу не выпускается (killswitch или маршруты)'
-        : 'ядро не отдаёт трафик';
+        ? t('ядро работает, но трафик системы наружу не выпускается (killswitch или маршруты)')
+        : t('ядро не отдаёт трафик');
 
     this.log(
-      'Самопроверка: ' + out.diagnosis +
-      ' · системой ' + (out.direct ? out.direct.code + ' за ' + out.direct.time + ' с' : 'нет') +
-      ' · через ядро ' + (out.viaCore ? out.viaCore.code : 'нет') +
-      ' · задержка ' + (out.delay != null ? out.delay + ' мс' : 'нет')
+      t('Самопроверка: ') + out.diagnosis +
+      t(' · системой ') + (out.direct ? out.direct.code + t(' за ') + out.direct.time + t(' с') : t('нет')) +
+      t(' · через ядро ') + (out.viaCore ? out.viaCore.code : t('нет')) +
+      t(' · задержка ') + (out.delay != null ? out.delay + t(' мс') : t('нет'))
     );
     return out;
   }
@@ -435,22 +436,22 @@ class Core extends EventEmitter {
 function guessError(logs) {
   const tail = logs.slice(-40).join('\n');
   if (/already exists|уже существует/i.test(tail)) {
-    return 'Сетевой адаптер занят прошлым запуском';
+    return t('Сетевой адаптер занят прошлым запуском');
   }
   if (/cache-file: timeout|initialize cache-file/i.test(tail)) {
-    return 'Ядро уже запущено: файл кэша занят другим экземпляром';
+    return t('Ядро уже запущено: файл кэша занят другим экземпляром');
   }
   if (/permission denied|access is denied|Отказано в доступе/i.test(tail)) {
-    return 'Нет прав администратора для режима туннеля';
+    return t('Нет прав администратора для режима туннеля');
   }
   if (/address already in use|Только один раз/i.test(tail)) {
-    return 'Порт занят другим приложением';
+    return t('Порт занят другим приложением');
   }
   if (/decode config|unmarshal|invalid config|parse config/i.test(tail)) {
-    return 'Ключ не поддерживается ядром';
+    return t('Ключ не поддерживается ядром');
   }
   if (/reality|handshake|tls: /i.test(tail)) {
-    return 'Сервер отклонил подключение (проверьте ключ)';
+    return t('Сервер отклонил подключение (проверьте ключ)');
   }
   const err = logs.slice(-40).reverse().find((l) => /FATAL|ERROR/i.test(l));
   return err ? err.replace(/^.*?(FATAL|ERROR)\s*/i, '').slice(0, 160) : '';

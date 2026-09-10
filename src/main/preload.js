@@ -36,11 +36,22 @@ contextBridge.exposeInMainWorld('eva', {
   copy: (text) => ipcRenderer.invoke('clipboard:write', text),
   paste: () => ipcRenderer.invoke('clipboard:read'),
 
+  splitPick: () => ipcRenderer.invoke('split:pick'),
+  splitAdd: (text) => ipcRenderer.invoke('split:add', text),
+  splitRemove: (name) => ipcRenderer.invoke('split:remove', name),
+
+  updateState: () => ipcRenderer.invoke('update:state'),
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateDownload: () => ipcRenderer.invoke('update:download'),
+  updateCancel: () => ipcRenderer.invoke('update:cancel'),
+  updateInstall: () => ipcRenderer.invoke('update:install'),
+  updateSeen: () => ipcRenderer.invoke('update:seen'),
+
   minimize: () => ipcRenderer.invoke('window:minimize'),
   close: () => ipcRenderer.invoke('window:close'),
 
   on: (channel, cb) => {
-    const allowed = ['state', 'stats', 'log', 'toast', 'ping', 'selftest'];
+    const allowed = ['state', 'stats', 'log', 'toast', 'ping', 'selftest', 'update'];
     if (!allowed.includes(channel)) return () => {};
     const listener = (_e, payload) => cb(payload);
     ipcRenderer.on(channel, listener);
