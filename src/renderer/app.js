@@ -275,15 +275,22 @@ async function splitAddTyped() {
 let upd = null;
 
 /** Что делает большая кнопка в каждом из состояний. */
+/**
+ * Одна кнопка на весь путь: нажатие скачивает и ставит без второго
+ * подтверждения. Промежуточные состояния только сообщают, что идёт работа.
+ */
 const UPD_BUTTON = {
   idle:        { text: 'ПРОВЕРИТЬ', on: true },
   checking:    { text: 'ПРОВЕРЯЮ…', on: false },
-  available:   { text: 'УСТАНОВИТЬ', on: true },
-  downloading: { text: 'ЗАГРУЖАЮ…', on: false },
-  ready:       { text: 'ПЕРЕЗАПУСТИТЬ И ПОСТАВИТЬ', on: true },
-  installing:  { text: 'УСТАНАВЛИВАЮ…', on: false },
+  available:   { text: 'ОБНОВИТЬ', on: true },
+  downloading: { text: 'ПОДОЖДИТЕ…', on: false },
+  ready:       { text: 'ОБНОВИТЬ', on: true },
+  installing:  { text: 'ПОДОЖДИТЕ…', on: false },
   error:       { text: 'ПОПРОБОВАТЬ СНОВА', on: true }
 };
+
+/** Момент запуска окна: по нему решаем, показывать ли полосу проверки. */
+const BOOT_AT = Date.now();
 
 function renderUpdate(u) {
   if (!u) return;
@@ -303,6 +310,7 @@ function renderUpdate(u) {
   else if (u.state === 'checking') hint.textContent = t('Смотрю, нет ли новой версии…');
   else if (u.state === 'installing') hint.textContent = t('Запускаю установщик. Приложение сейчас закроется и откроется заново.');
   else if (u.state === 'ready') hint.textContent = t('Файл загружен и проверен по контрольной сумме. Можно ставить.');
+  else if (u.state === 'downloading') hint.textContent = t('Подождите чуть-чуть — приложение обновится и запустится само.');
   else if (has) {
     const mb = (u.latest.size / 1048576).toFixed(1);
     hint.textContent = t('Скачать нужно ') + mb + t(' МБ. ') +
@@ -328,20 +336,111 @@ function renderUpdate(u) {
   $('btnUpdGo').textContent = t(btn.text);
   $('btnUpdGo').disabled = !btn.on;
   $('btnUpdCancel').hidden = u.state !== 'downloading';
+
+  renderUpdateBar(u);
 }
 
+/**
+ * Полоса внизу окна. При запуске показывает, что идёт проверка; дальше
+ * живёт только когда есть о чём сказать. Прогресс рисуется заливкой самой
+ * полосы, поэтому она остаётся одной строкой и ничего не загораживает.
+ */
+function renderUpdateBar(u) {
+  const bar = $('updateBar');
+  const btn = $('updateBarBtn');
+
+  let show = true;
+  let label = '';
+  let action = null;
+  let width = 0;
+
+  switch (u.state) {
+    case 'checking':
+      // раз в шесть часов мигать полосой незачем: показываем только на старте
+      show = Date.now() - BOOT_AT < 90000;
+      label = t('// проверяю обновления…');
+      break;
+    case 'available':
+      label = t('// вышла версия ') + u.latest.version;
+      action = 'update';
+      break;
+    case 'downloading':
+      width = u.progress ? u.progress.percent : 0;
+      label = t('// подождите чуть-чуть · ') + width + '%';
+      action = 'cancel';
+      break;
+    case 'ready':
+      label = t('// подождите чуть-чуть · ставлю');
+      width = 100;
+      break;
+    case 'installing':
+      label = t('// подождите, приложение перезапустится');
+      width = 100;
+      break;
+    case 'error':
+      label = t('// не получилось обновиться');
+      action = 'update';
+      break;
+    default:
+      show = false;
+  }
+
+  bar.hidden = !show;
+  bar.classList.toggle('ready', u.state !== 'checking');
+  $('updateBarText').textContent = label;
+  $('updateBarFill').style.width = width + '%';
+
+  btn.hidden = !action;
+  if (action) {
+    btn.textContent = action === 'cancel' ? t('ОТМЕНИТЬ') : t('ОБНОВИТЬ');
+    btn.dataset.act = action;
+  }
+
+  // две полосы в одном месте наложились бы: сдвигаем «применить» выше
+  $('applyBar').style.bottom = show ? '112px' : '';
+}
+
+/**
+ * Весь путь обновления по одному нажатию: проверить, скачать, поставить.
+ * Второго подтверждения нет — человек уже сказал «обнови».
+ */
+async function runUpdate() {
+  if (!upd) return;
+
+  // ещё не знаем, есть ли что ставить
+  if (!upd.latest) {
+    const s = await api.updateCheck();
+    renderUpdate(s);
+    if (!s.latest) {
+      toast(s.error ? t('Проверить не вышло: ') + s.error : t('Установлена последняя версия'),
+            s.error ? 'err' : 'ok');
+      return;
+    }
+  }
+
+  // файл ещё не лежит на диске — качаем и сразу ставим
+  if (upd.state !== 'ready') {
+    const r = await api.updateDownload();
+    if (!r.ok) {
+      if (!r.cancelled) toast(r.error, 'err');
+      return;
+    }
+  }
+
+  const i = await api.updateInstall();
+  if (!i.ok) toast(i.error, 'err');
+}
+
+/** Кнопка в панели: у неё же роль «просто проверить», когда обновления нет. */
 async function updateAction() {
   if (!upd) return;
-  if (upd.state === 'available') return void api.updateDownload();
-  if (upd.state === 'ready') {
-    const r = await api.updateInstall();
-    if (!r.ok) toast(r.error, 'err');
+  if (upd.state === 'idle') {
+    const s = await api.updateCheck();
+    renderUpdate(s);
+    if (!s.latest && !s.error) toast(t('Установлена последняя версия'), 'ok');
     return;
   }
-  // idle и error — обе ведут к повторной проверке
-  const s = await api.updateCheck();
-  renderUpdate(s);
-  if (!s.latest && !s.error) toast(t('Установлена последняя версия'), 'ok');
+  return runUpdate();
 }
 
 let thanksShown = false;
@@ -894,6 +993,10 @@ function wire() {
   });
 
   $('btnUpdGo').addEventListener('click', updateAction);
+  $('updateBarBtn').addEventListener('click', () => {
+    if ($('updateBarBtn').dataset.act === 'cancel') api.updateCancel();
+    else runUpdate();
+  });
   $('btnUpdCancel').addEventListener('click', () => api.updateCancel());
   $('thanksOk').addEventListener('click', () => $('modalThanks').classList.remove('show'));
 

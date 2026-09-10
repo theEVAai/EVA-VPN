@@ -227,7 +227,7 @@ class Updater extends EventEmitter {
       this.progress = null;
       this.setState(cancelled ? 'available' : 'error', { error: cancelled ? null : e.message });
       if (!cancelled) this.log(t('Обновление не загрузилось: ') + e.message);
-      return { ok: false, error: cancelled ? t('отменено') : e.message };
+      return { ok: false, cancelled, error: cancelled ? t('отменено') : e.message };
     } finally {
       this.abort = null;
     }
