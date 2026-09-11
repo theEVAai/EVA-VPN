@@ -423,6 +423,7 @@
     'Восстановление после сбоя: ': 'Recovery after a crash: ',
     'Не найдено ядро sing-box:\n': 'The sing-box core was not found:\n',
     'Обновление установлено: ': 'Update installed: ',
+    'Автозапуск восстановлен после обновления': 'Autostart restored after the update',
 
     /* ---------------- ядро (core.js) ---------------- */
     'Запуск уже идёт — повторный запрос отброшен': 'A start is already in progress — the repeat request was dropped',

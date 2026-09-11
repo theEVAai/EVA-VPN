@@ -812,18 +812,26 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
     createTray();
 
-    // состояние автозапуска берём из системы, а не из своего файла
-    try {
-      const real = await autostart.isEnabled();
-      if (real !== store.settings.autoStart) store.setSetting('autoStart', real);
-    } catch { /* не критично */ }
-
     // Метку оставила прошлая версия перед установкой. Держим её в снимке,
     // а не шлём событием: окно может ещё не успеть подписаться.
     justUpdated = updater.takeMarker();
     if (justUpdated) {
       note(t('Обновление установлено: ') + justUpdated.from + ' -> ' + justUpdated.to);
     }
+
+    // Состояние автозапуска берём из системы, а не из своего файла.
+    // Исключение — первый запуск после обновления: деинсталлятор версий
+    // до 0.3.1 снимал задачу автозапуска и при обновлении тоже. Тогда
+    // «в системе нет» значит «снял установщик», а не «человек выключил».
+    try {
+      const real = await autostart.isEnabled();
+      if (justUpdated && store.settings.autoStart && !real) {
+        await autostart.enable(adminRights);
+        note(t('Автозапуск восстановлен после обновления'));
+      } else if (real !== store.settings.autoStart) {
+        store.setSetting('autoStart', real);
+      }
+    } catch { /* не критично */ }
 
     const wantConnect =
       (justUpdated && justUpdated.connect) || store.settings.autoConnect;

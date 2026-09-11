@@ -32,7 +32,8 @@ win:
   requestedExecutionLevel: requireAdministrator
 
 nsis:
-  # карта блоков нужна только докачке обновлений, а автообновления у нас нет
+  # карта блоков нужна только electron-updater; своё обновление качает
+  # установщик целиком и сверяет sha256 из API GitHub (src/main/updater.js)
   differentialPackage: false
   oneClick: false
   perMachine: true
@@ -51,6 +52,6 @@ publish:
   owner: theEVAai
   repo: EVA-VPN
   releaseType: release
-  # в релизе только установщики: манифест автообновления не публикуем,
-  # пока в приложении нет самого автообновления
+  # в релизе только установщики: latest.yml не нужен — обновление внутри
+  # приложения берёт версию и sha256 из API GitHub, а не из манифеста
   publishAutoUpdate: false

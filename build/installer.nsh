@@ -9,8 +9,13 @@
   DetailPrint "Снимаем killswitch..."
   nsExec::Exec "powershell -NoProfile -ExecutionPolicy Bypass -Command $\"Remove-NetFirewallRule -Group 'EVA VPN' -ErrorAction SilentlyContinue; Set-NetFirewallProfile -All -DefaultOutboundAction Allow -ErrorAction SilentlyContinue$\""
 
-  DetailPrint "Удаляем задачу автозапуска..."
-  nsExec::Exec 'schtasks /Delete /TN "EVA VPN Autostart" /F'
+  ; При обновлении старая версия удаляется своим же деинсталлятором.
+  ; Снимать задачу автозапуска тогда нельзя: человек включал автозапуск,
+  ; а после обновления он молча пропадал бы.
+  ${ifNot} ${isUpdated}
+    DetailPrint "Удаляем задачу автозапуска..."
+    nsExec::Exec 'schtasks /Delete /TN "EVA VPN Autostart" /F'
+  ${endIf}
 
   DetailPrint "Сбрасываем системный прокси..."
   WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Internet Settings" "ProxyEnable" 0

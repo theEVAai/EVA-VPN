@@ -812,6 +812,9 @@ textarea:focus { outline: none; border-color: var(--blue-2); }
 .updatebar button:hover { background: var(--blue-2); }
 .updatebar button[hidden] { display: none; }
 
+/* задержка от прошлой удачной пробы, пока новая не прошла */
+.mval.stale { opacity: .45; }
+
 .applybar {
   position: absolute;
   left: 14px; right: 14px; bottom: 68px;

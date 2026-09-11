@@ -10,6 +10,8 @@ let state = null;
 /* ------------------------------------------------------------------ */
 
 let lang = 'ru';
+/** Последняя удачная задержка: показывается, пока новая проба не пройдёт. */
+let lastPing = null;
 /** Перевод. До первого applyLang — тождество, то есть русский оригинал. */
 let t = (s) => s;
 
@@ -199,6 +201,12 @@ function render(s) {
 
   $('applyBar').hidden = !s.pendingRestart;
   $('metrics').hidden = !running;
+  // после отключения старая задержка ничего не значит
+  if (!running && lastPing) {
+    lastPing = null;
+    $('mPing').textContent = '—';
+    $('mPing').classList.remove('stale');
+  }
   $('keyVal').textContent = p ? keyIdOf(p) : t('ключ не добавлен');
   $('version').textContent = 'v' + s.version;
   $('aboutVer').textContent = t('ВЕРСИЯ ') + s.version + ' · SING-BOX';
@@ -1010,8 +1018,20 @@ function wire() {
         '// ' + (state.profile ? state.profile.name : '') + ' · ' + fmtUptime(s.uptime) + ' · ' + fmtBytes(s.downTotal + s.upTotal);
     }
   });
+  // Одна неудачная проба — не повод стирать значение: раньше именно из-за
+  // этого поле подолгу стояло прочерком, и живой туннель выглядел мёртвым.
+  // Последнее значение остаётся, но приглушается, пока проба не пройдёт.
   api.on('ping', ({ delay }) => {
-    $('mPing').textContent = delay ? delay + t(' мс') : '—';
+    const el = $('mPing');
+    if (delay) {
+      lastPing = delay;
+      el.textContent = delay + t(' мс');
+      el.classList.remove('stale');
+    } else if (lastPing) {
+      el.classList.add('stale');
+    } else {
+      el.textContent = '—';
+    }
   });
   api.on('toast', ({ text, kind }) => toast(text, kind));
   api.on('selftest', (t) => {
