@@ -1,0 +1,64 @@
+# Описание проекта для XcodeGen.
+#
+# Почему так, а не готовый .xcodeproj: файл проекта Xcode — это огромный
+# машинный список с идентификаторами, который невозможно написать вручную
+# без ошибок. Из этого описания он порождается одной командой:
+#
+#   brew install xcodegen
+#   cd ios && xcodegen generate
+#
+# Перед этим нужна библиотека ядра — Libbox.xcframework, см. build.sh.
+
+name: EVA VPN
+
+options:
+  bundleIdPrefix: ai.theeva
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.9"
+    # Подпись: подставьте свою команду разработчика Apple.
+    # Без неё проект соберётся только для симулятора, а VPN там не работает.
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+
+  EVA VPN:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/App
+      - path: Sources/Core
+    dependencies:
+      - target: EvaTunnel
+        embed: true
+      - framework: Libbox.xcframework
+        embed: true
+        codeSign: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.theeva.vpn
+        INFOPLIST_FILE: Resources/App-Info.plist
+        CODE_SIGN_ENTITLEMENTS: Resources/App.entitlements
+        TARGETED_DEVICE_FAMILY: "1,2"
+
+  EvaTunnel:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Sources/Tunnel
+      - path: Sources/Core
+    dependencies:
+      - framework: Libbox.xcframework
+        embed: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.theeva.vpn.tunnel
+        INFOPLIST_FILE: Resources/Tunnel-Info.plist
+        CODE_SIGN_ENTITLEMENTS: Resources/Tunnel.entitlements

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#0d0d0d</color>
+    <color name="panel">#101010</color>
+    <color name="cream">#d8cdb8</color>
+    <color name="cream_dim">#6bd8cdb8</color>
+    <color name="blue">#1a3dcc</color>
+    <color name="blue_2">#2450e8</color>
+    <color name="danger">#e0574f</color>
+    <color name="line">#29d8cdb8</color>
+</resources>

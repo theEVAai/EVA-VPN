@@ -6,3 +6,15 @@ core/srss/*.srs
 *.log
 .DS_Store
 Thumbs.db
+
+# Android: собранное ядро и вывод Gradle.
+# libbox.aar — результат сборки (22 МБ), его воспроизводит scripts/build-libbox.
+android/app/libs/*.aar
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+
+# iOS: вывод сборки и собранная библиотека ядра
+ios/build/
+ios/**/*.xcframework

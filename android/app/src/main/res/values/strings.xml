@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">EVA VPN</string>
+
+    <string name="status_stopped">НЕ ЗАЩИЩЕНО</string>
+    <string name="status_starting">ПОДКЛЮЧЕНИЕ</string>
+    <string name="status_stopping">ОТКЛЮЧЕНИЕ</string>
+    <string name="status_connected_short">ЗАЩИЩЕНО</string>
+    <string name="status_connected">Подключено: %1$s</string>
+    <string name="status_no_key">// ключ не добавлен</string>
+
+    <string name="action_connect">ПОДКЛЮЧИТЬ</string>
+    <string name="action_disconnect">Отключить</string>
+
+    <string name="error_no_key">Сначала добавьте ключ доступа</string>
+    <string name="error_no_permission">Нужно разрешить создание VPN</string>
+
+    <string name="menu_keys">Ключи</string>
+    <string name="menu_rules">Правила</string>
+    <string name="menu_apps">Приложения</string>
+    <string name="menu_settings">Настройки</string>
+
+    <string name="keys_title">КЛЮЧИ ДОСТУПА</string>
+    <string name="keys_add_hint">Вставьте vless:// или ссылку на подписку</string>
+    <string name="keys_add">ДОБАВИТЬ</string>
+    <string name="keys_paste">ИЗ БУФЕРА</string>
+    <string name="keys_empty">Пока нет ни одного ключа</string>
+    <string name="keys_added">Добавлено: %1$d</string>
+    <string name="keys_bad">Не похоже на ключ или ссылку подписки</string>
+    <string name="keys_removed">Ключ удалён</string>
+
+    <string name="rules_title">ПРАВИЛА</string>
+    <string name="rules_modules">// готовые наборы</string>
+    <string name="rules_own">// свои правила</string>
+    <string name="rules_add_hint">Адрес, домен или порт</string>
+    <string name="rules_empty">Своих правил пока нет</string>
+    <string name="rules_explain">Введите адрес — приложение само поймёт, что это, и напишет ниже, как оно его поняло.</string>
+
+    <string name="apps_title">ПРИЛОЖЕНИЯ</string>
+    <string name="apps_mode_off">Все через VPN</string>
+    <string name="apps_mode_exclude">Выбранные — мимо VPN</string>
+    <string name="apps_mode_include">Только выбранные — через VPN</string>
+    <string name="apps_hint">Игры с античитом лучше вывести из туннеля: смена страны посреди сессии выглядит для них как угон аккаунта.</string>
+
+    <string name="settings_title">НАСТРОЙКИ</string>
+    <string name="settings_mtu">Размер пакета (MTU)</string>
+    <string name="settings_ipv6">Разрешить IPv6</string>
+    <string name="settings_ipv6_hint">Не выключайте без причины: у многих операторов сеть работает только на IPv6</string>
+    <string name="settings_dns_remote">DNS через VPN</string>
+    <string name="settings_dns_direct">Локальный DNS</string>
+    <string name="settings_language">Язык</string>
+</resources>

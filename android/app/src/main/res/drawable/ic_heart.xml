@@ -1,0 +1,19 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="180dp" android:height="168dp"
+    android:viewportWidth="120" android:viewportHeight="112">
+    <!-- внешнее сердце -->
+    <path android:name="outer"
+        android:pathData="M60,104 C60,104 8,74 8,39 C8,19 24,6 41,6 C51,6 57,11 60,17 C63,11 69,6 79,6 C96,6 112,19 112,39 C112,74 60,104 60,104 Z"
+        android:fillColor="#1a3dcc" />
+    <!-- внутреннее, кремовое -->
+    <path android:name="inner"
+        android:pathData="M60,96 C60,96 17,70 17,41 C17,24 30,14 43,14 C51,14 57,18 60,23 C63,18 69,14 77,14 C90,14 103,24 103,41 C103,70 60,96 60,96 Z"
+        android:fillColor="#d8cdb8" />
+    <!-- замочная скважина: её цвет — метка ключа -->
+    <path android:name="keyhole_circle"
+        android:pathData="M49,45 a11,11 0 1,0 22,0 a11,11 0 1,0 -22,0"
+        android:fillColor="#2450e8" />
+    <path android:name="keyhole_stem"
+        android:pathData="M55.5,52 L52,70 h16 l-3.5,-18 Z"
+        android:fillColor="#2450e8" />
+</vector>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="status_stopped">NOT PROTECTED</string>
+    <string name="status_starting">CONNECTING</string>
+    <string name="status_stopping">DISCONNECTING</string>
+    <string name="status_connected_short">PROTECTED</string>
+    <string name="status_connected">Connected: %1$s</string>
+    <string name="status_no_key">// no key added</string>
+
+    <string name="action_connect">CONNECT</string>
+    <string name="action_disconnect">Disconnect</string>
+
+    <string name="error_no_key">Add an access key first</string>
+    <string name="error_no_permission">VPN permission is required</string>
+
+    <string name="menu_keys">Keys</string>
+    <string name="menu_rules">Rules</string>
+    <string name="menu_apps">Apps</string>
+    <string name="menu_settings">Settings</string>
+
+    <string name="keys_title">ACCESS KEYS</string>
+    <string name="keys_add_hint">Paste a vless:// key or a subscription link</string>
+    <string name="keys_add">ADD</string>
+    <string name="keys_paste">FROM CLIPBOARD</string>
+    <string name="keys_empty">No keys yet</string>
+    <string name="keys_added">Added: %1$d</string>
+    <string name="keys_bad">This does not look like a key or a subscription link</string>
+    <string name="keys_removed">Key removed</string>
+
+    <string name="rules_title">RULES</string>
+    <string name="rules_modules">// ready-made sets</string>
+    <string name="rules_own">// your own rules</string>
+    <string name="rules_add_hint">Address, domain or port</string>
+    <string name="rules_empty">No rules of your own yet</string>
+    <string name="rules_explain">Type an address — the app works out what it is and tells you below how it understood it.</string>
+
+    <string name="apps_title">APPS</string>
+    <string name="apps_mode_off">Everything through the VPN</string>
+    <string name="apps_mode_exclude">Selected apps bypass the VPN</string>
+    <string name="apps_mode_include">Only selected apps use the VPN</string>
+    <string name="apps_hint">Games with anti-cheat are better kept out of the tunnel: a country change mid-session looks to them like a stolen account.</string>
+
+    <string name="settings_title">SETTINGS</string>
+    <string name="settings_mtu">Packet size (MTU)</string>
+    <string name="settings_ipv6">Allow IPv6</string>
+    <string name="settings_ipv6_hint">Do not turn this off without a reason: many carriers run IPv6-only networks</string>
+    <string name="settings_dns_remote">DNS over VPN</string>
+    <string name="settings_dns_direct">Local DNS</string>
+    <string name="settings_language">Language</string>
+</resources>
