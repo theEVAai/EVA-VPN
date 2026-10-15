@@ -39,6 +39,10 @@ contextBridge.exposeInMainWorld('eva', {
   splitPick: () => ipcRenderer.invoke('split:pick'),
   splitAdd: (text) => ipcRenderer.invoke('split:add', text),
   splitRemove: (name) => ipcRenderer.invoke('split:remove', name),
+  domainPreview: (text) => ipcRenderer.invoke('domains:preview', text),
+  domainSave: (rule) => ipcRenderer.invoke('domains:save', rule),
+  domainToggle: (id, enabled) => ipcRenderer.invoke('domains:toggle', id, enabled),
+  domainRemove: (id) => ipcRenderer.invoke('domains:remove', id),
 
   updateState: () => ipcRenderer.invoke('update:state'),
   updateCheck: () => ipcRenderer.invoke('update:check'),

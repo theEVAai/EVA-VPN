@@ -226,6 +226,7 @@ function render(s) {
   renderKeys(s);
   renderBlocks(s);
   renderSplit(s);
+  window.DomainRoutes.render(s);
   renderUpdate(s.update);
   if (s.justUpdated) showThanks(s.justUpdated);
   if (panelStack.includes('panelAccount')) renderAccount();
@@ -250,7 +251,8 @@ function renderSplit(s) {
   });
 
   $('splitRow').textContent =
-    mode === 'off' || !apps.length ? t(SPLIT_ROW.off) : t(SPLIT_ROW[mode]) + apps.length + t(' шт.');
+    t('доменных правил: ') + (s.settings.domainRules || []).filter((rule) => rule.enabled).length +
+    (mode !== 'off' && apps.length ? ' · ' + t(SPLIT_ROW[mode]) + apps.length : '');
 
   const box = $('splitList');
   if (!apps.length) {
@@ -758,6 +760,7 @@ async function addFromInput() {
 /* ------------------------------------------------------------------ */
 
 function wire() {
+  window.DomainRoutes.init({ api, render, translate: (value) => t(value), esc });
   $('btnPower').addEventListener('click', toggleVpn);
   $('btnMin').addEventListener('click', () => api.minimize());
   $('btnClose').addEventListener('click', () => api.close());

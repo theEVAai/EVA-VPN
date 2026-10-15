@@ -10,6 +10,7 @@ const { Store } = require('./store');
 const parse = require('./parse');
 const netfix = require('./netfix');
 const { MODULES } = require('./rules');
+const { normalizeDomains } = require('./domain-rules');
 const { Site } = require('./site');
 const { LogFile } = require('./logfile');
 const autostart = require('./autostart');
@@ -67,6 +68,7 @@ const FLAP_WINDOW = 10 * 60 * 1000;
 const FLAP_LIMIT = 3;
 const RETRY_DELAYS = [3000, 10000, 30000];
 let pendingRestart = false;   // настройки, которые ждут переподключения
+let configurationRevision = 0;
 const startHidden = process.argv.includes('--hidden');
 
 /* ------------------------------------------------------------------ */
@@ -254,6 +256,7 @@ function coreSettings() {
   const s = store.settings;
   return Object.assign({}, s, {
     ipv6: !s.blockIpv6,
+    profiles: store.profiles.slice(),
     tunName: netfix.tunAlias()
   });
 }
@@ -271,13 +274,19 @@ async function doConnectInner() {
   intended = true;
   note(t('Подключение: ') + profile.name + ' (' + profile.server + ':' + profile.port + t('), режим ') + mode);
 
-  const res = await core.start(profile, mode, coreSettings());
+  const revision = configurationRevision;
+  let res;
+  try {
+    res = await core.start(profile, mode, coreSettings());
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
   if (!res.ok) {
     note(t('Не удалось подключиться: ') + res.error);
     return res;
   }
 
-  pendingRestart = false;
+  pendingRestart = configurationRevision !== revision;
 
   // Два туннеля одновременно — самая частая причина «сайты не открываются»
   if (mode === 'tun') {
@@ -415,6 +424,7 @@ async function updateSub(sub) {
   const list = parse.parseMany(text);
   if (!list.length) throw new Error(t('В подписке нет ключей'));
   store.replaceSubProfiles(sub.id, list);
+  markRoutingChanged();
   sub.lastUpdate = Date.now();
   sub.userinfo = userinfo;
   store.save();
@@ -442,6 +452,7 @@ function importSiteKey(data) {
   if (prev && prev.color) profile.color = prev.color;
 
   store.replaceSubProfiles('site', [profile]);
+  markRoutingChanged();
   const added = store.profiles.find((x) => x.source === 'site');
   if (added) store.setActive(added.id);
   updateTray();
@@ -470,9 +481,24 @@ function addSplitApps(items) {
   }
   if (added) {
     store.setSetting('splitApps', list);
-    if (core.state === 'running') pendingRestart = true;
+    markRoutingChanged();
   }
   return added;
+}
+
+function markRoutingChanged() {
+  configurationRevision++;
+  if (core.state === 'running' || core.state === 'starting' || core.starting) pendingRestart = true;
+}
+
+function editDomainRoutes(mutate) {
+  try {
+    mutate();
+    markRoutingChanged();
+    return { ok: true, state: snapshot() };
+  } catch (e) {
+    return { ok: false, error: t(e.message) };
+  }
 }
 
 function registerIpc() {
@@ -525,6 +551,7 @@ function registerIpc() {
 
   ipcMain.handle('keys:remove', (_e, id) => {
     store.removeProfile(id);
+    markRoutingChanged();
     updateTray();
     return snapshot();
   });
@@ -557,10 +584,13 @@ function registerIpc() {
 
   ipcMain.handle('subs:remove', (_e, id) => {
     store.removeSub(id);
+    markRoutingChanged();
     return snapshot();
   });
 
   ipcMain.handle('settings:set', async (_e, key, value) => {
+    // Site rules have their own validated IPC; settings cannot bypass it.
+    if (key === 'domainRules') return snapshot();
     store.setSetting(key, value);
     // язык меняется без переподключения: он ни на что в ядре не влияет
     if (key === 'language') {
@@ -612,13 +642,11 @@ function registerIpc() {
     // Остальное меняет конфиг ядра. Перезапуск туннеля рвёт все живые
     // соединения, поэтому не делаем его исподтишка: копим и ждём кнопку.
     const configKeys = [
-      'blockIpv6', 'tunStack', 'allowLan', 'mixedPort', 'dnsRemote', 'dnsDirect',
+      'blockIpv6', 'tunStack', 'allowLan', 'mixedPort', 'dnsRemote', 'dnsDirect', 'connectTimeout',
       'blockTrackers', 'ruDirect', 'kodikDirect', 'torrentDirect', 'trustedDirect',
       'splitMode', 'splitApps'
     ];
-    if (running && configKeys.includes(key)) {
-      pendingRestart = true;
-    }
+    if (configKeys.includes(key)) markRoutingChanged();
     return snapshot();
   });
 
@@ -656,9 +684,17 @@ function registerIpc() {
       (x) => x.toLowerCase() !== String(name || '').toLowerCase()
     );
     store.setSetting('splitApps', list);
-    if (core.state === 'running') pendingRestart = true;
+    markRoutingChanged();
     return snapshot();
   });
+
+  ipcMain.handle('domains:preview', (_e, text) => {
+    try { return { ok: true, domains: normalizeDomains(text) }; }
+    catch (e) { return { ok: false, error: t(e.message) }; }
+  });
+  ipcMain.handle('domains:save', (_e, rule) => editDomainRoutes(() => store.saveDomainRule(rule)));
+  ipcMain.handle('domains:toggle', (_e, id, enabled) => editDomainRoutes(() => store.toggleDomainRule(id, enabled)));
+  ipcMain.handle('domains:remove', (_e, id) => editDomainRoutes(() => store.removeDomainRule(id)));
 
   ipcMain.handle('net:repair', async (_e, deep) => {
     if (core.state === 'running') await core.stop();

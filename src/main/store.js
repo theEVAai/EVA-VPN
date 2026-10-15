@@ -3,6 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { normalizeRule, validateRules } = require('./domain-rules');
 
 const DEFAULTS = {
   profiles: [],
@@ -24,8 +25,10 @@ const DEFAULTS = {
     bypassPrivate: true,
     splitMode: 'off',          // off | exclude | include
     splitApps: [],
+    domainRules: [],
     tunStack: 'gvisor',          // gvisor | mixed | system
     mtu: 9000,
+    connectTimeout: 30,
     mixedPort: 2080,
     clashPort: 19090,
     dnsRemote: 'https://1.1.1.1/dns-query',
@@ -134,15 +137,58 @@ class Store {
     return true;
   }
 
+  saveDomainRule(input) {
+    const current = this.settings.domainRules;
+    const existing = input?.id ? current.find((rule) => rule.id === input.id) : null;
+    if (input?.id && !existing) throw new Error('Правило уже удалено. Создайте его заново.');
+    const rule = normalizeRule(input, existing?.id);
+    if (rule.target.type === 'profile') {
+      const profile = this.profiles.find((p) => p.id === rule.target.profileId);
+      if (!profile) throw new Error('Выбранный ключ удалён. Выберите другой ключ.');
+      rule.target.profileName = profile.name;
+    }
+    const next = existing ? current.map((r) => r.id === rule.id ? rule : r) : [...current, rule];
+    this.settings.domainRules = validateRules(next);
+    this.save();
+    return rule;
+  }
+
+  toggleDomainRule(id, enabled) {
+    const next = this.settings.domainRules.map((rule) => rule.id === id ? { ...rule, enabled: Boolean(enabled) } : rule);
+    this.settings.domainRules = validateRules(next);
+    this.save();
+  }
+
+  removeDomainRule(id) {
+    this.settings.domainRules = this.settings.domainRules.filter((rule) => rule.id !== id);
+    this.save();
+  }
+
   /** Заменяет все профили подписки на новые. */
   replaceSubProfiles(subId, list) {
-    const activeLink = (this.activeProfile() || {}).link;
-    this.data.profiles = this.data.profiles.filter((p) => p.source !== subId);
+    const active = this.activeProfile();
+    const remaining = this.profiles.filter((p) => p.source === subId);
+    const others = this.profiles.filter((p) => p.source !== subId);
+    const incoming = [];
     for (const p of list) {
+      let index = remaining.findIndex((old) => old.link && old.link === p.link);
+      if (index < 0) index = remaining.findIndex((old) => old.type === p.type && old.name === p.name && old.server === p.server && old.port === p.port);
+      // Keep bindings across address/key rotation only when the name/type
+      // identifies one server unambiguously in both subscription versions.
+      if (index < 0) {
+        const oldMatches = remaining.map((old, i) => ({ old, i })).filter(({ old }) => old.type === p.type && old.name === p.name);
+        if (oldMatches.length === 1 && list.filter((item) => item.type === p.type && item.name === p.name).length === 1) index = oldMatches[0].i;
+      }
+      if (index >= 0) {
+        const old = remaining.splice(index, 1)[0];
+        p.id = old.id;
+        if (old.color) p.color = old.color;
+      }
       p.source = subId;
-      this.data.profiles.push(p);
+      incoming.push(p);
     }
-    const same = this.data.profiles.find((p) => p.link === activeLink);
+    this.data.profiles = others.concat(incoming);
+    const same = this.data.profiles.find((p) => p.id === active?.id);
     if (same) this.data.activeId = same.id;
     else if (!this.data.profiles.some((p) => p.id === this.data.activeId)) {
       this.data.activeId = this.data.profiles.length ? this.data.profiles[0].id : null;

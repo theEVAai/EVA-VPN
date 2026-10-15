@@ -73,6 +73,15 @@ class Core extends EventEmitter {
   }
 
   async startInner(profile, mode, settings, attempt = 1) {
+    // Reject unsupported saved keys before stopping a working tunnel or
+    // changing any network state.
+    const cfg = buildConfig({
+      profile,
+      profiles: settings.profiles || [],
+      mode,
+      opts: settings,
+      paths: { srss: this.paths.srss, cache: path.join(this.paths.userData, 'cache.db') }
+    });
     // при перезапуске killswitch не снимаем: иначе на несколько секунд
     // открывается прямой выход в сеть — ровно то, от чего он защищает
     if (this.proc) await this.stop({ keepGuards: true });
@@ -95,12 +104,6 @@ class Core extends EventEmitter {
       if (!gone) this.log(t('Прошлый адаптер ещё в системе — поднимаем туннель поверх'));
     }
 
-    const cfg = buildConfig({
-      profile,
-      mode,
-      opts: settings,
-      paths: { srss: this.paths.srss, cache: path.join(this.paths.userData, 'cache.db') }
-    });
     const file = this.configPath();
     fs.writeFileSync(file, JSON.stringify(cfg, null, 2), 'utf8');
 

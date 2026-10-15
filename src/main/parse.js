@@ -42,6 +42,9 @@ function buildTransport(net, q) {
     case '':
     case 'tcp':
     case 'raw':
+      if (q.get('headerType') && q.get('headerType') !== 'none') {
+        throw new Error('Маскировка TCP из этого ключа не поддерживается ядром EVA. Нужен ключ TCP/Reality без headerType.');
+      }
       return null;
     case 'ws': {
       const t = { type: 'ws', path: path || '/' };
@@ -67,13 +70,14 @@ function buildTransport(net, q) {
       return t;
     }
     default:
-      return null;
+      throw new Error('Транспорт этого ключа не поддерживается ядром EVA (TCP, WS, gRPC, HTTP, HTTPUpgrade). В том числе XHTTP требует другого ядра.');
   }
 }
 
 function buildTls(q, defaultSni, forceTls) {
   const security = String(q.get('security') || (forceTls ? 'tls' : 'none')).toLowerCase();
   if (security === 'none' || security === '') return null;
+  if (!['tls', 'reality'].includes(security)) throw new Error('Неподдерживаемая защита соединения в ключе');
   const sni = q.get('sni') || q.get('peer') || defaultSni || '';
   const fp = q.get('fp') || 'chrome';
   const alpnRaw = q.get('alpn') || '';
@@ -97,6 +101,9 @@ function buildTls(q, defaultSni, forceTls) {
 function parseVless(url) {
   const u = new URL(url);
   const q = u.searchParams;
+  if (q.get('encryption') && q.get('encryption') !== 'none') {
+    throw new Error('VLESS Encryption из этого ключа не поддерживается ядром EVA. Нужен совместимый ключ с encryption=none.');
+  }
   const p = {
     id: newId(),
     type: 'vless',

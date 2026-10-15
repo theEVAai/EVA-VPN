@@ -149,6 +149,76 @@ body.panelopen .titlebar { background: var(--panel); }
 .splitbtns { padding: 8px 10px 10px; }
 .splitbtns .ghost, .splitbtns .primary { flex: 1; }
 
+/* Site routes share the EVA panel, with native form controls and clear focus. */
+.split-head { min-height: 64px; height: auto; }
+.split-head h2 { min-width: 0; font-size: 18px; line-height: 1.25; letter-spacing: .4px; }
+.split-tabs { display: flex; flex: 0 0 auto; padding: 0 10px; border-bottom: 1px solid var(--line); }
+.split-tabs button {
+  flex: 1; min-width: 0; min-height: 42px; padding: 8px 5px;
+  font-size: 14px; color: var(--cream-2); border-bottom: 2px solid transparent;
+}
+.split-tabs button[aria-selected="true"] { color: var(--cream); font-weight: 700; border-bottom-color: var(--blue-2); }
+.split-tabs button:hover { background: var(--blue-soft); }
+#panelSplit .split-body { min-height: 0; padding: 14px 12px 110px; }
+.split-pane { display: flex; flex-direction: column; gap: 14px; }
+.split-pane[hidden], .domain-editor[hidden], #domainNew[hidden], .domain-feedback[hidden] { display: none; }
+.split-intro { font-size: 14px; line-height: 1.55; color: var(--cream); }
+.domain-note { font-size: 12px; line-height: 1.6; color: var(--cream-2); overflow-wrap: anywhere; }
+.split-module-list { display: flex; flex-direction: column; gap: 12px; }
+.domain-editor {
+  display: flex; flex-direction: column; gap: 8px; padding: 14px 0;
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.domain-editor h3, .domain-list-head h3 { font-size: 16px; font-weight: 600; line-height: 1.4; }
+.domain-editor h3 { margin-bottom: 5px; }
+.domain-editor label, .domain-search, .domain-filter { font-size: 13px; line-height: 1.5; color: var(--cream); }
+.domain-editor label:not(:first-of-type) { margin-top: 5px; }
+.domain-editor input, .domain-editor textarea, .domain-editor select,
+.domain-search input, .domain-filter select {
+  width: 100%; min-width: 0; min-height: 40px; padding: 9px 10px;
+  border: 1px solid var(--line); border-radius: 0; background: var(--black);
+  color: var(--cream); font: 14px var(--sans); line-height: 1.5;
+  user-select: text; caret-color: var(--cream); color-scheme: dark;
+}
+.domain-editor textarea {
+  min-height: 94px; height: auto; resize: vertical; font-family: var(--mono); font-size: 13px;
+}
+.domain-editor textarea::placeholder, .domain-editor input::placeholder, .domain-search input::placeholder { color: var(--cream-2); opacity: .8; }
+.domain-editor select, .domain-filter select { cursor: pointer; padding-right: 24px; }
+.domain-editor select option, .domain-editor select optgroup, .domain-filter select option { background: var(--panel); color: var(--cream); }
+.domain-preview { font-family: var(--mono); font-size: 11px; color: var(--cream-2); line-height: 1.6; overflow-wrap: anywhere; user-select: text; }
+.domain-preview:empty { display: none; }
+.domain-editor .btnrow { padding-top: 4px; flex-wrap: wrap; }
+.domain-editor .primary, #domainNew { flex: 0 0 auto; min-height: 42px; height: auto; padding: 10px; font-size: 11px; letter-spacing: .6px; }
+.domain-editor .btnrow button { flex: 1 1 100px; }
+.domain-search, .domain-filter { display: flex; flex-direction: column; gap: 5px; }
+.domain-list-head { margin-top: 6px; }
+.domain-list-head h3 { margin-bottom: 6px; }
+#domainCount { color: var(--cream-2); font-variant-numeric: tabular-nums; padding-left: 4px; }
+.domain-feedback { font-size: 13px; line-height: 1.6; color: var(--cream); overflow-wrap: anywhere; }
+#domainFormError { color: var(--danger); }
+.domain-list { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.domain-empty { padding: 16px 0; font-size: 14px; line-height: 1.6; color: var(--cream-2); }
+.domain-rule { display: flex; flex-direction: column; gap: 9px; padding: 15px 0; border-bottom: 1px solid var(--line); }
+.domain-rule-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.domain-rule h4 { min-width: 0; font-size: 14px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.domain-enable { display: flex; gap: 5px; align-items: center; flex: 0 0 auto; min-height: 24px; cursor: pointer; font-size: 11px; color: var(--cream-2); }
+.domain-enable input { width: 16px; height: 16px; accent-color: var(--blue-2); }
+.domain-rule-domains { font: 12px/1.7 var(--mono); color: var(--cream-2); overflow-wrap: anywhere; max-height: 130px; overflow-y: auto; user-select: text; }
+.domain-rule-route { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; font-weight: 600; }
+.domain-rule.is-disabled .domain-rule-route { font-weight: 400; color: var(--cream-2); }
+.domain-missing { font-size: 12px; color: var(--danger); line-height: 1.6; }
+.domain-rule-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.domain-rule-actions button { min-height: 34px; min-width: 34px; padding: 6px 8px; border: 1px solid var(--line); font-size: 12px; }
+.domain-rule-actions button:hover { background: var(--blue-soft); border-color: var(--blue-2); }
+.domain-rule-actions [data-domain-remove]:hover { color: var(--danger); border-color: var(--danger); }
+.domain-rule-actions svg { width: 16px; height: 16px; vertical-align: middle; }
+.split-tabs button:focus-visible, .split-pane button:focus-visible, .split-pane input:focus-visible,
+.split-pane select:focus-visible, .split-pane textarea:focus-visible { outline: 2px solid var(--cream); outline-offset: 2px; }
+.split-pane button:disabled, .split-pane input:disabled, .split-pane textarea:disabled,
+.split-pane select:disabled { opacity: .65; cursor: wait; }
+.split-pane ::selection { background: var(--blue); color: #fff; }
+
 /* --- панель обновления --- */
 .updbox { padding-bottom: 12px; }
 .updver {

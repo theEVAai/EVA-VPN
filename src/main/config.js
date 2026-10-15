@@ -7,15 +7,23 @@
 const path = require('path');
 const { MODULES } = require('./rules');
 const { t } = require('../renderer/i18n');
+const { orderedDomains, profileTag } = require('./domain-rules');
 
 const TUN_IPV4 = '172.19.0.1/30';
 const TUN_IPV6 = 'fdfe:dcba:9876::1/126';
 
 /** Профиль -> outbound sing-box */
-function buildOutbound(p, tag) {
+function buildOutbound(p, tag, connectTimeout = 30) {
+  // Re-read saved links too: older imports silently discarded unknown transports.
+  if (p.link) {
+    const parsed = require('./parse').parseLink(p.link);
+    if (parsed?.error) throw new Error(parsed.error);
+    if (parsed) p = parsed;
+  }
   const out = { type: p.type, tag };
   out.server = p.server;
   out.server_port = p.port;
+  out.connect_timeout = `${Math.min(120, Math.max(5, Number(connectTimeout) || 30))}s`;
 
   switch (p.type) {
     case 'vless':
@@ -71,11 +79,12 @@ function buildOutbound(p, tag) {
 /**
  * @param {object} args
  * @param {object} args.profile   нормализованный профиль (см. parse.js)
+ * @param {object[]} args.profiles сохранённые ключи для доменных маршрутов
  * @param {'tun'|'proxy'} args.mode
  * @param {object} args.opts      настройки приложения
  * @param {object} args.paths     { srss, cache }
  */
-function buildConfig({ profile, mode, opts, paths }) {
+function buildConfig({ profile, profiles = [], mode, opts, paths }) {
   const o = Object.assign(
     {
       mixedPort: 2080,
@@ -89,6 +98,7 @@ function buildConfig({ profile, mode, opts, paths }) {
       bypassPrivate: true,
       splitMode: 'off',
       splitApps: [],
+      domainRules: [],
       dnsRemote: 'https://1.1.1.1/dns-query',
       dnsDirect: '77.88.8.8',
       logLevel: 'info'
@@ -110,7 +120,8 @@ function buildConfig({ profile, mode, opts, paths }) {
       type: 'https',
       tag: 'dns-remote',
       server: u.hostname,
-      path: u.pathname && u.pathname !== '/' ? u.pathname : undefined,
+      server_port: u.port ? Number(u.port) : undefined,
+      path: (u.pathname && u.pathname !== '/' ? u.pathname : '/dns-query') + u.search,
       detour: 'proxy',
       domain_resolver: 'dns-direct'
     });
@@ -131,7 +142,7 @@ function buildConfig({ profile, mode, opts, paths }) {
     },
     inbounds: [],
     outbounds: [
-      buildOutbound(profile, 'proxy'),
+      buildOutbound(profile, 'proxy', o.connectTimeout),
       { type: 'direct', tag: 'direct' }
     ],
     route: {
@@ -188,6 +199,37 @@ function buildConfig({ profile, mode, opts, paths }) {
   // Windows-специфика: NetBIOS/LLMNR/mDNS мимо туннеля, иначе локальная сеть тормозит
   routeRules.push({ network: 'udp', port: [135, 137, 138, 139, 5353], action: 'reject' });
 
+  // Explicit site routes precede application modes and built-in modules.
+  // Each selected key is an independent outbound in the same core process.
+  const domainEntries = orderedDomains(o.domainRules);
+  const availableProfiles = new Map(profiles.map((p) => [p.id, p]));
+  availableProfiles.set(profile.id, profile);
+  const installed = new Set();
+  for (const { domain, target } of domainEntries) {
+    let outbound = target.type === 'direct' ? 'direct' : 'proxy';
+    let dnsServer = target.type === 'direct' ? 'dns-direct' : 'dns-remote';
+    const chosen = target.type === 'profile' ? availableProfiles.get(target.profileId) : null;
+    if (target.type === 'block' || (target.type === 'profile' && !chosen)) {
+      // A deleted subscription/key must not silently fall back to another
+      // country or expose the connection directly.
+      routeRules.push({ domain_suffix: [domain], action: 'reject' });
+      dnsRules.push({ domain_suffix: [domain], action: 'predefined', rcode: 'NXDOMAIN' });
+      continue;
+    }
+    if (chosen && chosen.id !== profile.id) {
+      outbound = profileTag(chosen.id);
+      dnsServer = 'dns-' + outbound;
+      if (!installed.has(outbound)) {
+        config.outbounds.push(buildOutbound(chosen, outbound, o.connectTimeout));
+        dnsServers.push({ ...dnsServers[0], tag: dnsServer, detour: outbound });
+        installed.add(outbound);
+      }
+    }
+    routeRules.push({ domain_suffix: [domain], action: 'route', outbound });
+    dnsRules.push({ domain_suffix: [domain], action: 'route', server: dnsServer });
+  }
+  if (domainEntries.length) config.dns.reverse_mapping = true;
+
   if (o.bypassPrivate) {
     routeRules.push({ ip_is_private: true, action: 'route', outbound: 'direct' });
     if (srss) {
@@ -216,9 +258,8 @@ function buildConfig({ profile, mode, opts, paths }) {
     (n) => '(?i)[\\\\/]' + n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$'
   );
 
-  // Исключение ставим раньше блокировок: программа выведена из туннеля
-  // целиком, её не должны трогать ни правила обхода, ни фильтры. Это и
-  // нужно играм с античитом — им важно, чтобы адрес не менялся вообще.
+  // Application exclusions precede presets. Explicit site rules above
+  // still take priority, as shown in the split tunneling panel.
   if (splitMode === 'exclude') {
     routeRules.push({ process_path_regex: splitRegex.slice(), action: 'route', outbound: 'direct' });
     dnsRules.push({ process_path_regex: splitRegex.slice(), action: 'route', server: 'dns-direct' });
