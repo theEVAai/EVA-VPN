@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 60
     env:
       EVA_IOS_OUTPUT: ${{ github.workspace }}/dist/ios
-      EVA_SINGBOX_SRC: ${{ runner.temp }}/sing-box
+      EVA_SINGBOX_SRC: ${{ github.workspace }}/sing-box-src
       EVA_BUILD_NUMBER: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
