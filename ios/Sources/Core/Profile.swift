@@ -328,8 +328,8 @@ enum Keys {
             name: name.isEmpty ? server : name,
             server: server,
             port: port,
-            method: method,
             password: password,
+            method: method,
             link: url
         )
     }

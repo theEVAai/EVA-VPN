@@ -39,9 +39,6 @@ targets:
     dependencies:
       - target: EvaTunnel
         embed: true
-      - framework: Libbox.xcframework
-        embed: true
-        codeSign: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.theeva.vpn

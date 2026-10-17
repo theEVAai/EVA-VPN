@@ -168,9 +168,9 @@ class EvaTunnelProvider: NEPacketTunnelProvider,
     }
 
     /// На iOS сокеты ядра выводит из туннеля сама система.
-    func usePlatformAutoDetectInterfaceControl() -> Bool { false }
+    func usePlatformAutoDetectControl() -> Bool { false }
 
-    func autoDetectInterfaceControl(_: Int32) throws {}
+    func autoDetectControl(_: Int32) throws {}
 
     func useProcFS() -> Bool { false }
 
@@ -225,7 +225,7 @@ class EvaTunnelProvider: NEPacketTunnelProvider,
 
     func systemCertificates() -> LibboxStringIteratorProtocol? { StringArray([]) }
 
-    func sendNotification(_: LibboxNotification?) throws {
+    func send(_: LibboxNotification?) throws {
         // уведомления показывает основное приложение
     }
 
