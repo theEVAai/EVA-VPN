@@ -26,10 +26,6 @@ jobs:
       EVA_BUILD_NUMBER: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25.x'
-          cache: false
       - name: XcodeGen
         run: command -v xcodegen || brew install xcodegen
       - uses: actions/cache@v4
@@ -37,6 +33,11 @@ jobs:
         with:
           path: ios/Libbox.xcframework
           key: libbox-ios-1.13.12-gomobile-0.1.12-go1.25-macos15-1
+      - uses: actions/setup-go@v5
+        if: steps.libbox.outputs.cache-hit != 'true'
+        with:
+          go-version: '1.25.x'
+          cache: false
       - name: sing-box sources
         if: steps.libbox.outputs.cache-hit != 'true'
         run: git clone --depth 1 --branch v1.13.12 https://github.com/SagerNet/sing-box.git "$EVA_SINGBOX_SRC"
