@@ -14,6 +14,8 @@ final class TunnelManager: ObservableObject {
 
     @Published private(set) var status: NEVPNStatus = .invalid
     @Published private(set) var lastError: String?
+    @Published private(set) var preparing = false
+    private static let providerID = "ai.theeva.vpn.tunnel"
 
     private var manager: NETunnelProviderManager?
     private var observer: NSObjectProtocol?
@@ -25,25 +27,39 @@ final class TunnelManager: ObservableObject {
             queue: .main
         ) { [weak self] notification in
             guard let connection = notification.object as? NEVPNConnection else { return }
-            Task { @MainActor in self?.status = connection.status }
+            Task { @MainActor in
+                guard let self, connection === self.manager?.connection else { return }
+                self.status = connection.status
+            }
         }
     }
 
     var isConnected: Bool { status == .connected }
-    var isBusy: Bool { status == .connecting || status == .disconnecting || status == .reasserting }
+    var isBusy: Bool { preparing || status == .connecting || status == .disconnecting || status == .reasserting }
+
+    /// Read existing state without asking for VPN permission on app launch.
+    func load() async {
+        do {
+            let all = try await NETunnelProviderManager.loadAllFromPreferences()
+            manager = all.first { ($0.protocolConfiguration as? NETunnelProviderProtocol)?.providerBundleIdentifier == Self.providerID }
+            status = manager?.connection.status ?? .invalid
+        } catch { lastError = error.localizedDescription }
+    }
 
     /// Загружает профиль VPN или создаёт его при первом запуске.
     func prepare() async {
         do {
             let all = try await NETunnelProviderManager.loadAllFromPreferences()
-            let existing = all.first ?? NETunnelProviderManager()
+            let existing = all.first {
+                ($0.protocolConfiguration as? NETunnelProviderProtocol)?.providerBundleIdentifier == Self.providerID
+            } ?? NETunnelProviderManager()
 
             let proto = (existing.protocolConfiguration as? NETunnelProviderProtocol)
                 ?? NETunnelProviderProtocol()
             // адрес сервера система показывает в настройках; настоящий
             // адрес берётся из ключа, поэтому здесь просто имя сервиса
             proto.serverAddress = "EVA VPN"
-            proto.providerBundleIdentifier = "ai.theeva.vpn.tunnel"
+            proto.providerBundleIdentifier = Self.providerID
 
             existing.protocolConfiguration = proto
             existing.localizedDescription = "EVA VPN"
@@ -62,7 +78,11 @@ final class TunnelManager: ObservableObject {
     }
 
     func start() async {
-        if manager == nil { await prepare() }
+        guard !isBusy && !isConnected else { return }
+        preparing = true
+        defer { preparing = false }
+        await prepare()
+        guard lastError == nil else { return }
         guard let manager else { return }
         do {
             try manager.connection.startVPNTunnel()
@@ -85,7 +105,7 @@ extension NEVPNStatus {
     /// Название состояния так, как его стоит показать человеку.
     var title: String {
         switch self {
-        case .connected: return "ЗАЩИЩЕНО"
+        case .connected: return "VPN ВКЛЮЧЁН"
         case .connecting: return "ПОДКЛЮЧЕНИЕ"
         case .disconnecting: return "ОТКЛЮЧЕНИЕ"
         case .reasserting: return "ПЕРЕПОДКЛЮЧЕНИЕ"

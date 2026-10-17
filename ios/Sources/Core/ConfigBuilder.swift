@@ -23,6 +23,7 @@ enum ConfigBuilder {
 
     struct Options {
         var mtu: Int = 1400
+        var connectTimeout: Int = 30
         /// Разрешить IPv6 внутри туннеля. Выключать только осознанно.
         var ipv6: Bool = true
         var dnsRemote: String = "https://1.1.1.1/dns-query"
@@ -41,12 +42,14 @@ enum ConfigBuilder {
     /* Выход (сервер)                                                      */
     /* ------------------------------------------------------------------ */
 
-    static func buildOutbound(_ p: Profile, tag: String) throws -> JSONValue {
+    static func buildOutbound(_ profile: Profile, tag: String, connectTimeout: Int = 30) throws -> JSONValue {
+        let p = profile.link.isEmpty ? profile : (try Keys.parseLink(profile.link) ?? profile)
         var out: [String: JSONValue] = [
             "type": .string(p.type),
             "tag": .string(tag),
             "server": .string(p.server),
-            "server_port": .int(p.port)
+            "server_port": .int(p.port),
+            "connect_timeout": .string("\(min(120, max(5, connectTimeout)))s")
         ]
 
         switch p.type {
@@ -238,18 +241,21 @@ enum ConfigBuilder {
         var dnsServers: [JSONValue] = []
         let remote = o.dnsRemote.trimmingCharacters(in: .whitespaces)
         if remote.hasPrefix("https://") {
-            let withoutScheme = String(remote.dropFirst("https://".count))
-            let hostPart = String(withoutScheme.prefix(while: { $0 != "/" }))
-            let pathPart = withoutScheme.dropFirst(hostPart.count)
+            guard let url = URLComponents(string: remote), let host = url.host,
+                  !host.isEmpty, url.user == nil, url.password == nil, url.fragment == nil else {
+                throw ParseError(message: "Укажите корректный HTTPS-адрес DNS.")
+            }
 
             var s: [String: JSONValue] = [
                 "type": .string("https"),
                 "tag": .string("dns-remote"),
-                "server": .string(hostPart),
+                "server": .string(host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))),
                 "detour": .string("proxy"),
                 "domain_resolver": .string("dns-direct")
             ]
-            if !pathPart.isEmpty { s["path"] = .string(String(pathPart)) }
+            if let port = url.port { s["server_port"] = .int(port) }
+            let path = url.percentEncodedPath.isEmpty ? "/dns-query" : url.percentEncodedPath
+            s["path"] = .string(path + (url.percentEncodedQuery.map { "?" + $0 } ?? ""))
             dnsServers.append(.object(s))
         } else {
             dnsServers.append(.object([
@@ -290,7 +296,7 @@ enum ConfigBuilder {
         ])
 
         let outbounds: [JSONValue] = [
-            try buildOutbound(profile, tag: "proxy"),
+            try buildOutbound(profile, tag: "proxy", connectTimeout: o.connectTimeout),
             .object(["type": .string("direct"), "tag": .string("direct")])
         ]
 

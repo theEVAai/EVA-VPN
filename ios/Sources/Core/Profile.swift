@@ -100,13 +100,16 @@ enum Keys {
     /* Транспорт и TLS                                                     */
     /* ------------------------------------------------------------------ */
 
-    private static func buildTransport(_ net: String?, _ q: [String: String]) -> JSONValue? {
+    private static func buildTransport(_ net: String?, _ q: [String: String]) throws -> JSONValue? {
         let type = (net ?? "tcp").lowercased()
         let path = q["path"] ?? ""
         let h = q["host"] ?? ""
 
         switch type {
         case "", "tcp", "raw":
+            if let header = q["headerType"], !header.isEmpty, header != "none" {
+                throw ParseError(message: "Маскировка TCP не поддерживается. Нужен ключ TCP/Reality без headerType.")
+            }
             return nil
 
         case "ws":
@@ -148,13 +151,16 @@ enum Keys {
             return .object(t)
 
         default:
-            return nil
+            throw ParseError(message: "Транспорт ключа не поддерживается ядром EVA (TCP, WS, gRPC, HTTP, HTTPUpgrade). XHTTP требует другого ядра.")
         }
     }
 
-    private static func buildTLS(_ q: [String: String], defaultSNI: String, forceTLS: Bool) -> JSONValue? {
+    private static func buildTLS(_ q: [String: String], defaultSNI: String, forceTLS: Bool) throws -> JSONValue? {
         let security = (q["security"] ?? (forceTLS ? "tls" : "none")).lowercased()
         if security == "none" || security.isEmpty { return nil }
+        guard ["tls", "reality"].contains(security) else {
+            throw ParseError(message: "Неподдерживаемая защита соединения в ключе.")
+        }
 
         let sni = q["sni"] ?? q["peer"] ?? defaultSNI
         let fp = q["fp"] ?? "chrome"
@@ -190,21 +196,24 @@ enum Keys {
     private static func parseVless(_ url: String) throws -> Profile {
         guard let c = URLComponents(string: url) else { throw ParseError(message: "vless: не разобрать ссылку") }
         let q = query(c)
+        if let encryption = q["encryption"], !encryption.isEmpty, encryption != "none" {
+            throw ParseError(message: "VLESS Encryption не поддерживается ядром EVA. Нужен ключ с encryption=none.")
+        }
         let server = host(c)
-        let uuid = dec(c.user)
+        let uuid = dec(c.percentEncodedUser)
         if uuid.isEmpty || server.isEmpty {
             throw ParseError(message: "vless: не хватает UUID или адреса")
         }
         return Profile(
             id: newId(),
             type: "vless",
-            name: dec(c.fragment).isEmpty ? server : dec(c.fragment),
+            name: dec(c.percentEncodedFragment).isEmpty ? server : dec(c.percentEncodedFragment),
             server: server,
             port: c.port ?? 443,
             uuid: uuid,
             flow: q["flow"] ?? "",
-            tls: buildTLS(q, defaultSNI: server, forceTLS: false),
-            transport: buildTransport(q["type"] ?? "tcp", q),
+            tls: try buildTLS(q, defaultSNI: server, forceTLS: false),
+            transport: try buildTransport(q["type"] ?? "tcp", q),
             link: url
         )
     }
@@ -242,8 +251,8 @@ enum Keys {
             uuid: str("id"),
             alterId: num(str("aid"), 0),
             security: str("scy").isEmpty ? "auto" : str("scy"),
-            tls: secured ? buildTLS(q, defaultSNI: defaultSNI, forceTLS: true) : nil,
-            transport: buildTransport(str("net").isEmpty ? "tcp" : str("net"), q),
+            tls: secured ? (try buildTLS(q, defaultSNI: defaultSNI, forceTLS: true)) : nil,
+            transport: try buildTransport(str("net").isEmpty ? "tcp" : str("net"), q),
             link: url
         )
     }
@@ -255,12 +264,12 @@ enum Keys {
         return Profile(
             id: newId(),
             type: "trojan",
-            name: dec(c.fragment).isEmpty ? server : dec(c.fragment),
+            name: dec(c.percentEncodedFragment).isEmpty ? server : dec(c.percentEncodedFragment),
             server: server,
             port: c.port ?? 443,
-            password: dec(c.user),
-            tls: buildTLS(q, defaultSNI: server, forceTLS: true),
-            transport: buildTransport(q["type"] ?? "tcp", q),
+            password: dec(c.percentEncodedUser),
+            tls: try buildTLS(q, defaultSNI: server, forceTLS: true),
+            transport: try buildTransport(q["type"] ?? "tcp", q),
             link: url
         )
     }
@@ -348,12 +357,12 @@ enum Keys {
             "alpn": .array(alpn)
         ])
 
-        let password = dec(c.user).isEmpty ? (q["password"] ?? "") : dec(c.user)
+        let password = dec(c.percentEncodedUser).isEmpty ? (q["password"] ?? "") : dec(c.percentEncodedUser)
 
         return Profile(
             id: newId(),
             type: "hysteria2",
-            name: dec(c.fragment).isEmpty ? server : dec(c.fragment),
+            name: dec(c.percentEncodedFragment).isEmpty ? server : dec(c.percentEncodedFragment),
             server: server,
             port: c.port ?? 443,
             password: password,
@@ -383,7 +392,7 @@ enum Keys {
 
     /// Текст -> список профилей. Принимает одну ссылку, много строк
     /// и содержимое подписки, завёрнутое в base64.
-    static func parseMany(_ text: String) -> [Profile] {
+    static func parseMany(_ text: String) throws -> [Profile] {
         var body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if body.isEmpty { return [] }
 
@@ -393,14 +402,18 @@ enum Keys {
         }
 
         var out: [Profile] = []
+        var firstError: Error?
         for line in body.split(whereSeparator: { $0 == "\n" || $0 == "\r" }) {
             let s = line.trimmingCharacters(in: .whitespaces)
             if s.isEmpty { continue }
             // одна битая строка не должна ронять всю подписку
-            if let p = try? parseLink(s), let profile = p {
-                out.append(profile)
+            do {
+                if let profile = try parseLink(s) { out.append(profile) }
+            } catch {
+                if firstError == nil { firstError = error }
             }
         }
+        if out.isEmpty, let firstError { throw firstError }
         return out
     }
 }

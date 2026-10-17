@@ -21,6 +21,7 @@ final class Store {
         static let modules = "modules"
         static let userRules = "userRules"
         static let mtu = "mtu"
+        static let connectTimeout = "connectTimeout"
         static let ipv6 = "ipv6"
         static let dnsRemote = "dnsRemote"
         static let dnsDirect = "dnsDirect"
@@ -82,6 +83,32 @@ final class Store {
         profiles = profiles.filter { $0.id != id }
     }
 
+    @discardableResult
+    func replaceSubscription(_ source: String, incoming: [Profile]) -> Int {
+        let oldActive = activeProfile
+        var remaining = profiles.filter { $0.source == source }
+        let others = profiles.filter { $0.source != source }
+        let fresh = incoming.map { incoming -> Profile in
+            var p = incoming
+            let index = remaining.firstIndex { $0.link == p.link }
+                ?? remaining.firstIndex { $0.type == p.type && $0.name == p.name && $0.server == p.server && $0.port == p.port }
+            if let index {
+                let old = remaining.remove(at: index)
+                p.id = old.id
+                p.color = old.color
+            }
+            p.source = source
+            return p
+        }
+        profiles = others + fresh
+        if let oldActive, profiles.contains(where: { $0.id == oldActive.id }) {
+            activeId = oldActive.id
+        } else if oldActive == nil || oldActive?.source == source {
+            activeId = fresh.first?.id ?? others.first?.id ?? ""
+        }
+        return fresh.count
+    }
+
     /* ------------------------------------------------------------------ */
     /* Правила                                                             */
     /* ------------------------------------------------------------------ */
@@ -123,6 +150,11 @@ final class Store {
         set { defaults.set(newValue, forKey: Key.mtu) }
     }
 
+    var connectTimeout: Int {
+        get { min(120, max(5, defaults.object(forKey: Key.connectTimeout) as? Int ?? 30)) }
+        set { defaults.set(min(120, max(5, newValue)), forKey: Key.connectTimeout) }
+    }
+
     var ipv6: Bool {
         get { defaults.object(forKey: Key.ipv6) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Key.ipv6) }
@@ -142,6 +174,7 @@ final class Store {
     var configOptions: ConfigBuilder.Options {
         var o = ConfigBuilder.Options()
         o.mtu = mtu
+        o.connectTimeout = connectTimeout
         o.ipv6 = ipv6
         o.dnsRemote = dnsRemote
         o.dnsDirect = dnsDirect

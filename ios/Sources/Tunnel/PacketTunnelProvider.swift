@@ -48,12 +48,12 @@ class EvaTunnelProvider: NEPacketTunnelProvider,
 
         // Рабочие каталоги ядра — внутри общей группы, чтобы их видело
         // и приложение (например, для журнала).
-        let base = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: Store.appGroup)
-            ?? FileManager.default.temporaryDirectory
+        guard let base = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Store.appGroup) else {
+            throw ParseError(message: "Не настроена App Group group.ai.theeva.vpn для приложения и расширения.")
+        }
 
         let work = base.appendingPathComponent("work", isDirectory: true)
-        try? FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
 
         let setup = LibboxSetupOptions()
         setup.basePath = base.path
@@ -72,8 +72,17 @@ class EvaTunnelProvider: NEPacketTunnelProvider,
             )
         }
         commandServer = server
-        try server.start()
-        try server.startOrReloadService(config, options: LibboxOverrideOptions())
+        do {
+            try server.start()
+            try server.startOrReloadService(config, options: LibboxOverrideOptions())
+        } catch {
+            try? server.closeService()
+            server.close()
+            commandServer = nil
+            interfaceMonitor?.stop()
+            interfaceMonitor = nil
+            throw error
+        }
 
         log.info("туннель поднят")
     }
@@ -194,6 +203,9 @@ class EvaTunnelProvider: NEPacketTunnelProvider,
             boxed.index = item.index
             boxed.mtu = item.mtu
             boxed.type = item.type
+            boxed.flags = item.flags
+            boxed.addresses = StringArray(item.addresses)
+            boxed.dnsServer = StringArray([])
             result.append(boxed)
         }
         return NetworkInterfaceArray(result)
@@ -244,7 +256,7 @@ class EvaTunnelProvider: NEPacketTunnelProvider,
 
     func writeDebugMessage(_ message: String?) {
         guard let message else { return }
-        log.debug("\(message, privacy: .public)")
+        log.debug("\(message, privacy: .private)")
     }
 }
 

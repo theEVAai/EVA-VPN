@@ -1,0 +1,85 @@
+name: iOS IPA
+
+on:
+  push:
+    branches: [codex/ios-ipa]
+    paths:
+      - ios/**
+      - .github/workflows/ios.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  checks: write
+
+concurrency:
+  group: ios-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      EVA_IOS_OUTPUT: ${{ github.workspace }}/dist/ios
+      EVA_SINGBOX_SRC: ${{ runner.temp }}/sing-box
+      EVA_BUILD_NUMBER: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache: false
+      - name: XcodeGen
+        run: command -v xcodegen || brew install xcodegen
+      - uses: actions/cache@v4
+        id: libbox
+        with:
+          path: ios/Libbox.xcframework
+          key: libbox-ios-1.13.12-gomobile-0.1.12-go1.25-macos15-1
+      - name: sing-box sources
+        if: steps.libbox.outputs.cache-hit != 'true'
+        run: git clone --depth 1 --branch v1.13.12 https://github.com/SagerNet/sing-box.git "$EVA_SINGBOX_SRC"
+      - name: Build device IPA (no tests or app launch)
+        id: compile
+        shell: bash
+        run: |
+          set -o pipefail
+          bash ios/build.sh --ipa 2>&1 | tee "$RUNNER_TEMP/eva-ios-build.log"
+      - name: Cache compiled libbox
+        if: always() && steps.libbox.outputs.cache-hit != 'true' && hashFiles('ios/Libbox.xcframework/Info.plist') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: ios/Libbox.xcframework
+          key: libbox-ios-1.13.12-gomobile-0.1.12-go1.25-macos15-1
+      - name: Compiler diagnostics
+        if: failure() && steps.compile.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const file = `${process.env.RUNNER_TEMP}/eva-ios-build.log`;
+            const log = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : 'No compiler log';
+            const errors = log.split('\n').filter(line => /error:|fatal error:|undefined:|cannot |does not conform|failed|not found/i.test(line));
+            const details = `${errors.join('\n')}\n\n${log.slice(-40000)}`.slice(-60000);
+            await github.rest.checks.create({ ...context.repo, name: 'iOS compiler diagnostics',
+              head_sha: context.sha, status: 'completed', conclusion: 'failure',
+              output: { title: 'iOS compilation failed', summary: `\`\`\`text\n${details}\n\`\`\`` } });
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EVA-VPN-iOS
+          path: |
+            dist/ios/*.ipa
+            dist/ios/*.sha256
+          if-no-files-found: error
+      - name: Publish iOS prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="ios-v0.6.0-build.${GITHUB_RUN_NUMBER}"
+          gh release create "$tag" \
+            "$EVA_IOS_OUTPUT/EVA-VPN-0.6.0-iOS-unsigned.ipa" \
+            "$EVA_IOS_OUTPUT/EVA-VPN-0.6.0-iOS-unsigned.ipa.sha256" \
+            --target "$GITHUB_SHA" --prerelease \
+            --title "EVA VPN for iOS 0.6.0 (build ${GITHUB_RUN_NUMBER})" \
+            --notes-file ios/RELEASE.md

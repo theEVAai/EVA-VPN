@@ -12,6 +12,8 @@ struct KeysView: View {
     @State private var profiles: [Profile] = []
     @State private var activeId: String = ""
     @State private var message: String?
+    @State private var loading = false
+    @StateObject private var tunnel = TunnelManager.shared
 
     var body: some View {
         ZStack {
@@ -30,6 +32,9 @@ struct KeysView: View {
                         .background(Eva.panel)
                         .frame(height: 84)
                         .overlay(Rectangle().stroke(Eva.line, lineWidth: 1))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityLabel("Ключ или HTTPS-ссылка на подписку")
 
                     Text("Вставьте vless:// или ссылку на подписку")
                         .font(.system(size: 11, design: .monospaced))
@@ -43,8 +48,15 @@ struct KeysView: View {
                         }
                         .buttonStyle(GhostButton())
 
-                        Button("ДОБАВИТЬ") { add() }
+                        Button(loading ? "ЗАГРУЗКА…" : "ДОБАВИТЬ") { Task { await add() } }
                             .buttonStyle(PrimaryButton())
+                    }
+                    .disabled(loading)
+
+                    if profiles.contains(where: { $0.source.hasPrefix("sub:https://") }) {
+                        Button("ОБНОВИТЬ ПОДПИСКИ") { Task { await refreshSubscriptions() } }
+                            .buttonStyle(GhostButton())
+                            .disabled(loading)
                     }
 
                     if let message {
@@ -85,14 +97,25 @@ struct KeysView: View {
                   (profile.source == "manual" ? "вручную" : "подписка"),
             trailing: AnyView(
                 Button("×") {
+                    guard !loading else { return }
+                    if isActive && (tunnel.isConnected || tunnel.isBusy) {
+                        message = "Отключите VPN перед удалением активного ключа."
+                        return
+                    }
                     store.removeProfile(id: profile.id)
                     reload()
                 }
                 .buttonStyle(GhostButton())
+                .accessibilityLabel("Удалить ключ \(profile.name)")
             )
         )
         .contentShape(Rectangle())
         .onTapGesture {
+            guard !loading else { return }
+            if tunnel.isConnected || tunnel.isBusy {
+                message = "Отключите VPN перед выбором другого ключа."
+                return
+            }
             store.activeId = profile.id
             reload()
         }
@@ -117,15 +140,48 @@ struct KeysView: View {
         .padding(.vertical, 11)
     }
 
-    private func add() {
-        let parsed = Keys.parseMany(text)
-        if parsed.isEmpty {
-            message = "Не похоже на ключ или ссылку подписки"
-            return
+    @MainActor
+    private func add() async {
+        guard !loading else { return }
+        loading = true
+        defer { loading = false }
+        let input = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            let count: Int
+            if input.hasPrefix("https://") || input.hasPrefix("http://") {
+                let parsed = try await Subscription.fetch(input)
+                count = store.replaceSubscription("sub:" + input, incoming: parsed)
+            } else {
+                let parsed = try Keys.parseMany(input)
+                guard !parsed.isEmpty else { throw ParseError(message: "Не похоже на ключ или ссылку подписки.") }
+                count = store.addProfiles(parsed)
+            }
+            text = ""
+            message = "Ключей добавлено или обновлено: \(count)"
+            if tunnel.isConnected { message! += ". Для применения переподключите VPN." }
+            reload()
+        } catch {
+            message = error is ParseError ? error.localizedDescription : "Подписка не загрузилась. Проверьте ссылку и соединение."
         }
-        let added = store.addProfiles(parsed)
-        text = ""
-        message = "Добавлено: \(added)"
+    }
+
+    @MainActor
+    private func refreshSubscriptions() async {
+        guard !loading else { return }
+        loading = true
+        defer { loading = false }
+        let sources = Set(store.profiles.map(\.source).filter { $0.hasPrefix("sub:https://") })
+        var updated = 0
+        var failed = 0
+        for source in sources {
+            do {
+                let incoming = try await Subscription.fetch(String(source.dropFirst(4)))
+                store.replaceSubscription(source, incoming: incoming)
+                updated += 1
+            } catch { failed += 1 }
+        }
+        message = "Подписок обновлено: \(updated). Ошибок: \(failed). При ошибке прежние ключи сохранены."
+        if tunnel.isConnected { message! += " Переподключите VPN для применения." }
         reload()
     }
 

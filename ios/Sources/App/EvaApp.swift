@@ -73,9 +73,10 @@ struct ContentView: View {
             .toolbar(.hidden, for: .navigationBar)
         }
         .task {
-            await tunnel.prepare()
+            await tunnel.load()
             refresh()
         }
+        .onAppear(perform: refresh)
         .alert("Сначала добавьте ключ доступа", isPresented: $showNoKey) {
             Button("Понятно", role: .cancel) {}
         }

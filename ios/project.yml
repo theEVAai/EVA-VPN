@@ -19,11 +19,11 @@ options:
 
 settings:
   base:
-    MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.6.0"
+    CURRENT_PROJECT_VERSION: "2"
     SWIFT_VERSION: "5.9"
     # Подпись: подставьте свою команду разработчика Apple.
-    # Без неё проект соберётся только для симулятора, а VPN там не работает.
+    # Для IPA без подписи build.sh отключает code signing при сборке.
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
 
@@ -35,6 +35,7 @@ targets:
     sources:
       - path: Sources/App
       - path: Sources/Core
+      - path: Resources/Assets.xcassets
     dependencies:
       - target: EvaTunnel
         embed: true
@@ -47,6 +48,7 @@ targets:
         INFOPLIST_FILE: Resources/App-Info.plist
         CODE_SIGN_ENTITLEMENTS: Resources/App.entitlements
         TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   EvaTunnel:
     type: app-extension
@@ -62,3 +64,12 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: ai.theeva.vpn.tunnel
         INFOPLIST_FILE: Resources/Tunnel-Info.plist
         CODE_SIGN_ENTITLEMENTS: Resources/Tunnel.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+
+schemes:
+  EVA VPN:
+    build:
+      targets:
+        EVA VPN: all
+    archive:
+      config: Release

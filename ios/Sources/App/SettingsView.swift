@@ -6,6 +6,8 @@ struct SettingsView: View {
     private let store = Store.shared
 
     @State private var mtu: String = ""
+    @State private var connectTimeout = 30
+    @State private var feedback: String?
     @State private var ipv6: Bool = true
     @State private var dnsRemote: String = ""
     @State private var dnsDirect: String = ""
@@ -21,7 +23,7 @@ struct SettingsView: View {
                         .foregroundColor(Eva.cream)
 
                     field("Размер пакета (MTU)", text: $mtu, keyboard: .numberPad)
-                    Text("1400 — разумное значение для сотовой сети. Больше режется по дороге.")
+                    Text("По умолчанию 1400. Меняйте только при необходимости: MTU туннеля отличается от MTU внешнего соединения.")
                         .font(.system(size: 11))
                         .foregroundColor(Eva.creamDim)
 
@@ -32,16 +34,29 @@ struct SettingsView: View {
                     }
                     .tint(Eva.blue2)
 
-                    Text("Не выключайте без причины: у многих операторов сеть работает только на IPv6, и запрет оставит телефон без интернета.")
+                    Text("IPv6 для трафика внутри VPN. Включайте, если выбранный сервер поддерживает выход в IPv6.")
                         .font(.system(size: 11))
                         .foregroundColor(Eva.creamDim)
 
                     field("DNS через VPN", text: $dnsRemote, keyboard: .URL)
                     field("Локальный DNS", text: $dnsDirect, keyboard: .URL)
 
+                    Picker("Ожидание подключения", selection: $connectTimeout) {
+                        ForEach([15, 30, 60, 120], id: \.self) { seconds in
+                            Text("\(seconds) с").tag(seconds)
+                        }
+                    }
+                    .tint(Eva.blue2)
+                    Text("Увеличьте время, если соединение обрывается по таймауту. Изменения применяются после переподключения.")
+                        .font(.system(size: 14))
+                        .foregroundColor(Eva.creamDim)
+
                     Button("СОХРАНИТЬ") { save() }
                         .buttonStyle(PrimaryButton())
                         .padding(.top, 6)
+                    if let feedback {
+                        Text(feedback).font(.system(size: 14)).foregroundColor(Eva.cream)
+                    }
                 }
                 .padding(20)
             }
@@ -68,16 +83,23 @@ struct SettingsView: View {
 
     private func reload() {
         mtu = String(store.mtu)
+        connectTimeout = store.connectTimeout
         ipv6 = store.ipv6
         dnsRemote = store.dnsRemote
         dnsDirect = store.dnsDirect
     }
 
     private func save() {
-        if let value = Int(mtu), (576...9000).contains(value) { store.mtu = value }
+        guard let value = Int(mtu), (1280...9000).contains(value) else {
+            feedback = "Укажите MTU от 1280 до 9000."
+            return
+        }
+        store.mtu = value
+        store.connectTimeout = connectTimeout
         store.ipv6 = ipv6
         if !dnsRemote.isEmpty { store.dnsRemote = dnsRemote }
         if !dnsDirect.isEmpty { store.dnsDirect = dnsDirect }
         reload()
+        feedback = "Сохранено. Переподключите VPN, чтобы применить настройки."
     }
 }
