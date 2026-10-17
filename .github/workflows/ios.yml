@@ -1,15 +1,10 @@
 name: iOS IPA
 
 on:
-  push:
-    branches: [codex/ios-ipa]
-    paths:
-      - ios/**
-      - .github/workflows/ios.yml
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   checks: write
 
 concurrency:
@@ -66,21 +61,3 @@ jobs:
             await github.rest.checks.create({ ...context.repo, name: 'iOS compiler diagnostics',
               head_sha: context.sha, status: 'completed', conclusion: 'failure',
               output: { title: 'iOS compilation failed', summary: `\`\`\`text\n${details}\n\`\`\`` } });
-      - uses: actions/upload-artifact@v4
-        with:
-          name: EVA-VPN-iOS
-          path: |
-            dist/ios/*.ipa
-            dist/ios/*.sha256
-          if-no-files-found: error
-      - name: Publish iOS prerelease
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          tag="ios-v0.6.0-build.${GITHUB_RUN_NUMBER}"
-          gh release create "$tag" \
-            "$EVA_IOS_OUTPUT/EVA-VPN-0.6.0-iOS-unsigned.ipa" \
-            "$EVA_IOS_OUTPUT/EVA-VPN-0.6.0-iOS-unsigned.ipa.sha256" \
-            --target "$GITHUB_SHA" --prerelease \
-            --title "EVA VPN for iOS 0.6.0 (build ${GITHUB_RUN_NUMBER})" \
-            --notes-file ios/RELEASE.md
