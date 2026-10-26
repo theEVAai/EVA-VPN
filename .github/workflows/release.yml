@@ -26,8 +26,8 @@ jobs:
       - name: Скачать ядро sing-box
         run: node scripts/fetch-core.mjs
 
-      - name: Сборка и публикация
-        run: npx electron-builder --win --publish always
+      - name: Сборка и загрузка в черновик
+        run: npx electron-builder --win --publish always '-c.publish.releaseType=draft'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -36,7 +36,7 @@ jobs:
           name: EVA-VPN-windows
           path: dist/*.exe
 
-      - name: Описание релиза
+      - name: Публикация готового релиза
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -44,6 +44,8 @@ jobs:
           $releaseVersion = (Get-Content -LiteralPath package.json | ConvertFrom-Json).version
           $releaseNotes = Join-Path docs "RELEASE-$releaseVersion.md"
           if (Test-Path -LiteralPath $releaseNotes) {
-            gh release edit "v$releaseVersion" --title "EVA VPN $releaseVersion" --notes-file $releaseNotes
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            gh release edit "v$releaseVersion" --title "EVA VPN $releaseVersion" --notes-file $releaseNotes --draft=false --latest
+          } else {
+            gh release edit "v$releaseVersion" --title "EVA VPN $releaseVersion" --draft=false --latest
           }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
