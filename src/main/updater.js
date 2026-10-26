@@ -224,7 +224,10 @@ class Updater extends EventEmitter {
       } else {
         const args = ['--updated', '/S', '--force-run'];
         if (this.installDir) args.push('/D=' + this.installDir);
-        child = spawn(this.file, args, { detached: true, stdio: 'ignore', windowsHide: true });
+        // NSIS requires /D= to be the unquoted remainder of the command line.
+        // Quote argv[0] ourselves and leave the last argument verbatim.
+        child = spawn(this.file, args, { detached: true, stdio: 'ignore', windowsHide: true,
+          windowsVerbatimArguments: true, argv0: '"' + this.file + '"' });
       }
       await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
       child.unref();
