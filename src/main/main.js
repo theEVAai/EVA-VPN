@@ -69,6 +69,9 @@ const FLAP_LIMIT = 3;
 const RETRY_DELAYS = [3000, 10000, 30000];
 let pendingRestart = false;   // настройки, которые ждут переподключения
 let configurationRevision = 0;
+let connectionRequest = 0;
+let selfTestTimer = null;
+let installingUpdate = false;
 const startHidden = process.argv.includes('--hidden');
 
 /* ------------------------------------------------------------------ */
@@ -157,15 +160,14 @@ function updateTray() {
       {
         label: t('Снять блокировку сети'),
         click: async () => {
-          await netfix.disableKillSwitch();
-          await netfix.restorePriority();
+          await doReleaseGuards();
           send('toast', { text: t('Блокировка снята'), kind: 'ok' });
         }
       },
       {
         label: t('Восстановить сеть'),
         click: async () => {
-          await netfix.repairNetwork({ deep: false });
+          await doRepair(false);
           send('toast', { text: t('Сеть восстановлена'), kind: 'ok' });
         }
       },
@@ -261,7 +263,8 @@ function coreSettings() {
   });
 }
 
-async function doConnectInner() {
+async function doConnectInner(request = connectionRequest) {
+  if (quitting || !intended || request !== connectionRequest) return { ok: false, cancelled: true };
   const profile = store.activeProfile();
   if (!profile) {
     send('toast', { text: t('Сначала добавьте ключ доступа'), kind: 'err' });
@@ -281,16 +284,20 @@ async function doConnectInner() {
   } catch (e) {
     return { ok: false, error: e.message };
   }
+  if (request !== connectionRequest || !intended) return { ok: false, cancelled: true };
   if (!res.ok) {
     note(t('Не удалось подключиться: ') + res.error);
     return res;
   }
 
   pendingRestart = configurationRevision !== revision;
+  const run = core.run;
+  const isCurrent = () => request === connectionRequest && intended && core.run === run && core.state === 'running';
 
   // Два туннеля одновременно — самая частая причина «сайты не открываются»
   if (mode === 'tun') {
     netfix.foreignTunnels().then((list) => {
+      if (!isCurrent()) return;
       const rivals = list.filter((t) => t.defaultRoutes > 0 || t.dns);
       if (!rivals.length) return;
       const names = rivals.map((t) => t.name).join(', ');
@@ -302,25 +309,33 @@ async function doConnectInner() {
           : t('Рядом работает ') + names + t(' — включите приоритет или выключите соседа'),
         kind: store.settings.vpnPriority ? 'ok' : 'err'
       });
-    });
+    }).catch(() => {});
   }
 
   // Через пару секунд проверяем, что трафик реально ходит
-  setTimeout(async () => {
-    if (core.state !== 'running') return;
-    const t = await core.selfTest();
-    send('selftest', t);
-    if (t.ok) return;
+  clearTimeout(selfTestTimer);
+  selfTestTimer = setTimeout(async () => {
+    try {
+    if (!isCurrent()) return;
+    const result = await core.selfTest();
+    if (!isCurrent()) return;
+    send('selftest', result);
+    if (result.ok) return;
 
     // Туннель есть, ядро отвечает, а система наружу не ходит — значит наши же
     // правила брандмауэра и режут. Защита не должна оставлять человека без сети:
     // снимаем её сами и говорим об этом, вместо молчаливого «ЗАЩИЩЕНО».
-    if (t.viaCore && core.killSwitchOn) {
+    if (result.viaCore && core.killSwitchOn) {
+      await serialize(t('проверка блокировки'), async () => {
+      if (!isCurrent() || !core.killSwitchOn) return;
       note(t('Killswitch блокировал системный трафик — снимаю его'));
       await netfix.disableKillSwitch();
       core.killSwitchOn = false;
       send('state', snapshot());
+      });
+      if (!isCurrent()) return;
       const again = await core.selfTest();
+      if (!isCurrent()) return;
       send('selftest', again);
       send('toast', {
         text: again.ok
@@ -332,6 +347,7 @@ async function doConnectInner() {
     }
 
     send('toast', { text: t('Туннель поднят, но трафик не проходит — смотрите журнал'), kind: 'err' });
+    } catch (e) { if (isCurrent()) note(t('Самопроверка не завершилась: ') + e.message); }
   }, 2500);
 
   return res;
@@ -373,14 +389,63 @@ function scheduleRetry() {
   retryTimer = setTimeout(() => {
     if (intended && core.state !== 'running') {
       send('toast', { text: t('Переподключение (') + flaps.length + '/' + FLAP_LIMIT + ')…' });
-      serialize(t('автоповтор'), doConnectInner);
+      const request = connectionRequest;
+      serialize(t('автоповтор'), () => {
+        if (request !== connectionRequest || !intended || quitting || core.state === 'running') return { ok: false, cancelled: true };
+        return doConnectInner(request);
+      });
     }
   }, delay);
   return true;
 }
 
-const doConnect = () => serialize(t('подключение'), doConnectInner);
-const doDisconnect = () => serialize(t('отключение'), doDisconnectInner);
+function invalidateConnection() {
+  connectionRequest += 1;
+  clearTimeout(retryTimer);
+  clearTimeout(selfTestTimer);
+  retryTimer = null;
+  selfTestTimer = null;
+  if (core) core.cancelStart();
+  return connectionRequest;
+}
+
+function doConnect() {
+  if (quitting || installingUpdate) return Promise.resolve({ ok: false, cancelled: true });
+  const request = invalidateConnection();
+  intended = true;
+  flaps = [];
+  return serialize(t('подключение'), () => doConnectInner(request));
+}
+
+function doDisconnect() {
+  if (installingUpdate) return Promise.resolve({ ok: false, error: 'busy' });
+  const request = invalidateConnection();
+  intended = false;
+  flaps = [];
+  return serialize(t('отключение'), () => request === connectionRequest
+    ? doDisconnectInner() : { ok: false, cancelled: true });
+}
+
+function doRepair(deep) {
+  if (quitting || installingUpdate) return Promise.resolve([]);
+  invalidateConnection();
+  intended = false;
+  flaps = [];
+  return serialize(t('восстановление сети'), async () => {
+    await core.stop();
+    return netfix.repairNetwork({ deep, coreExe: paths.coreExe, configFile: core.configPath() });
+  });
+}
+
+function doReleaseGuards() {
+  if (quitting || installingUpdate) return Promise.resolve(false);
+  return serialize(t('снятие блокировки'), async () => {
+    await core.releaseGuards();
+    note(t('Блокировка сети снята вручную'));
+    send('state', snapshot());
+    return true;
+  });
+}
 
 function relaunchAsAdmin() {
   const exe = process.execPath;
@@ -505,6 +570,7 @@ function registerIpc() {
   ipcMain.handle('app:state', () => snapshot());
 
   ipcMain.handle('vpn:toggle', async () => {
+    if (installingUpdate) return { ok: false, error: 'busy' };
     // пока идёт переход, повторные нажатия игнорируем: раньше они
     // отменяли начатое подключение и запускали новое поверх него
     if (core.state === 'starting' || core.state === 'stopping' || core.starting) {
@@ -543,10 +609,19 @@ function registerIpc() {
   });
 
   ipcMain.handle('keys:select', async (_e, id) => {
+    if (installingUpdate) return Object.assign(snapshot(), { selectionError: t('Дождитесь завершения обновления') });
+    const profile = store.profiles.find((p) => p.id === id);
+    if (!profile) return Object.assign(snapshot(), { selectionError: t('Ключ не найден') });
+    try { core.validate(profile, store.settings.mode, coreSettings()); }
+    catch (e) { return Object.assign(snapshot(), { selectionError: e.message }); }
+    if (store.data.activeId === id && core.state === 'running' && core.profile && core.profile.id === id && !pendingRestart) return snapshot();
+    const reconnect = intended || core.state === 'running' || core.state === 'starting' || core.starting;
     store.setActive(id);
-    if (core.state === 'running') await doConnect();
+    configurationRevision += 1;
+    send('state', snapshot());
+    const result = reconnect ? await doConnect() : { ok: true };
     updateTray();
-    return snapshot();
+    return Object.assign(snapshot(), result.ok || result.cancelled ? {} : { selectionError: result.error });
   });
 
   ipcMain.handle('keys:remove', (_e, id) => {
@@ -657,13 +732,29 @@ function registerIpc() {
   ipcMain.handle('update:download', () => updater.download());
   ipcMain.handle('update:cancel', () => updater.cancel());
   ipcMain.handle('update:install', () => {
-    // Ставим поверх работающего туннеля: установщик ждёт, пока приложение
-    // закроется, а закрытие снимает killswitch и маршруты. Флагом просим
-    // новую версию подключиться сразу, если сейчас мы были подключены.
-    const res = updater.install({ connect: intended });
-    if (!res.ok) return res;
-    setTimeout(() => { quitting = true; app.quit(); }, 400);
-    return res;
+    if (installingUpdate || updater.state !== 'ready') return { ok: false, error: t('Файл обновления не готов') };
+    const connect = intended;
+    installingUpdate = true;
+    invalidateConnection();
+    intended = false;
+    return serialize(t('установка обновления'), async () => {
+      try {
+        // Restore the old session's network state before its uninstaller runs.
+        await core.stop();
+        const result = await updater.install({ connect });
+        if (!result.ok) {
+          installingUpdate = false;
+          if (connect) doConnect();
+          return result;
+        }
+        quitting = true;
+        setTimeout(() => app.quit(), 200);
+        return result;
+      } catch (error) {
+        installingUpdate = false;
+        return { ok: false, error: error.message };
+      }
+    });
   });
 
   ipcMain.handle('split:pick', async () => {
@@ -696,11 +787,7 @@ function registerIpc() {
   ipcMain.handle('domains:toggle', (_e, id, enabled) => editDomainRoutes(() => store.toggleDomainRule(id, enabled)));
   ipcMain.handle('domains:remove', (_e, id) => editDomainRoutes(() => store.removeDomainRule(id)));
 
-  ipcMain.handle('net:repair', async (_e, deep) => {
-    if (core.state === 'running') await core.stop();
-    const report = await netfix.repairNetwork({ deep: !!deep });
-    return report;
-  });
+  ipcMain.handle('net:repair', (_e, deep) => doRepair(!!deep));
 
   ipcMain.handle('site:login', async (_e, email, password, code) => {
     try {
@@ -734,7 +821,7 @@ function registerIpc() {
       const key = await site.keys('PC');
       const profile = importSiteKey(key);
       if (!profile) return { ok: false, error: t('Сайт не отдал ключ') };
-      if (core.state === 'running') await doConnect();
+      if (intended || core.state === 'running' || core.starting) await doConnect();
       return { ok: true, name: profile.name };
     } catch (e) {
       return { ok: false, error: e.message };
@@ -747,7 +834,7 @@ function registerIpc() {
       await site.switchServer(choice, 'PC');
       const key = await site.keys('PC');
       const profile = importSiteKey(key);
-      if (core.state === 'running') await doConnect();
+      if (intended || core.state === 'running' || core.starting) await doConnect();
       return { ok: true, name: profile ? profile.name : '' };
     } catch (e) {
       return { ok: false, error: e.message };
@@ -763,17 +850,7 @@ function registerIpc() {
     return res;
   });
 
-  ipcMain.handle('net:release', () =>
-    serialize(t('снятие блокировки'), async () => {
-      await netfix.disableKillSwitch();
-      await netfix.restorePriority();
-      core.killSwitchOn = false;
-      core.priorityApplied = false;
-      note(t('Блокировка сети снята вручную'));
-      send('state', snapshot());
-      return true;
-    })
-  );
+  ipcMain.handle('net:release', () => doReleaseGuards());
 
   ipcMain.handle('core:logs', () => core.logs.slice(-200));
 
@@ -784,9 +861,9 @@ function registerIpc() {
 
   ipcMain.handle('net:selftest', async () => {
     if (core.state !== 'running') return { ok: false, error: t('Туннель не запущен') };
-    const t = await core.selfTest();
+    const result = await core.selfTest();
     const tunnels = await netfix.foreignTunnels();
-    return { ok: true, test: t, foreign: tunnels };
+    return { ok: true, test: result, foreign: tunnels };
   });
 
   ipcMain.handle('shell:open', (_e, url) => {
@@ -818,7 +895,9 @@ if (!app.requestSingleInstanceLock()) {
     core = new Core(paths);
     i18n.setLang(currentLang());
     site = new Site(paths.userData, safeStorage, store.settings.siteBase || undefined);
-    updater = new Updater({ version: app.getVersion(), userData: paths.userData, log: note });
+    updater = new Updater({ version: app.getVersion(), userData: paths.userData, log: note,
+      portablePath: process.env.PORTABLE_EXECUTABLE_FILE || '',
+      installDir: app.isPackaged && !process.env.PORTABLE_EXECUTABLE_FILE ? path.dirname(process.execPath) : '' });
     updater.on('update', (u) => send('update', u));
 
     core.on('state', (s) => {
@@ -872,7 +951,8 @@ if (!app.requestSingleInstanceLock()) {
     const wantConnect =
       (justUpdated && justUpdated.connect) || store.settings.autoConnect;
     if (wantConnect && store.activeProfile()) {
-      setTimeout(() => doConnect(), 800);
+      const startupRequest = connectionRequest;
+      setTimeout(() => { if (connectionRequest === startupRequest && !quitting) doConnect(); }, 800);
     }
 
     // Первая проверка почти сразу: полоса внизу окна должна появиться
@@ -902,12 +982,16 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('quit', () => logFile.close());
 
-  app.on('before-quit', async (e) => {
-    if (core && (core.proc || core.proxyWasSet)) {
+  let shutdown = null;
+  app.on('before-quit', (e) => {
+    if (core) {
       e.preventDefault();
       quitting = true;
-      await core.stop();
-      app.exit(0);
+      if (shutdown) return;
+      invalidateConnection();
+      intended = false;
+      shutdown = serialize(t('завершение'), () => core.stop())
+        .catch((error) => note(error.message)).finally(() => app.exit(0));
     }
   });
 }

@@ -1,47 +1,44 @@
 'use strict';
-/**
- * Обновление приложения из релизов GitHub.
- *
- * Почему не electron-updater: он требует лежащего в релизе манифеста
- * latest.yml, а в релизе договорились держать только установщики. Всё, что
- * нужно для проверки версии и целостности, GitHub и так отдаёт в API:
- * список файлов, их размер и sha256 каждого. Манифест не нужен.
- *
- * Что здесь есть от безопасности, при отсутствии подписи кода:
- *   - адрес загрузки принимается только с github.com и только из релизов
- *     нашего репозитория: подменить ссылку ответом API не выйдет;
- *   - sha256 берётся из API (api.github.com), а файл качается с другого
- *     хоста (objects.githubusercontent.com), то есть подделать нужно оба;
- *   - если API не дал контрольную сумму, обновление не ставится вообще.
- */
 
 const { EventEmitter } = require('events');
 const { spawn } = require('child_process');
+const { Transform } = require('stream');
+const { pipeline } = require('stream/promises');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const { openResponse, readJSON, fail } = require('./update-http');
 const { t } = require('../renderer/i18n');
 
-const OWNER = 'theEVAai';
-const REPO = 'EVA-VPN';
-const API = 'https://api.github.com/repos/' + OWNER + '/' + REPO + '/releases/latest';
-const DOWNLOAD_PREFIX = '/' + OWNER + '/' + REPO + '/releases/download/';
-const ALLOWED_HOSTS = [
-  'github.com',
-  'objects.githubusercontent.com',
-  'release-assets.githubusercontent.com'
-];
+const ROOT = '/theEVAai/EVA-VPN/releases/';
+const API_ROOT = '/repos/theEVAai/EVA-VPN/releases/';
+const API = 'https://api.github.com' + API_ROOT + 'latest';
+const VERSION = /^\d+\.\d+\.\d+$/;
+const HASH = /^[0-9a-f]{64}$/;
 
-/** Сравнение версий вида 1.2.3. Возвращает 1, если a новее b. */
 function compare(a, b) {
-  const norm = (v) => String(v || '').replace(/^v/, '').split('.').map((x) => parseInt(x, 10) || 0);
-  const x = norm(a);
-  const y = norm(b);
+  const x = String(a || '').replace(/^v/, '').split('.').map(Number);
+  const y = String(b || '').replace(/^v/, '').split('.').map(Number);
   for (let i = 0; i < 3; i++) {
-    if ((x[i] || 0) > (y[i] || 0)) return 1;
-    if ((x[i] || 0) < (y[i] || 0)) return -1;
+    if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0) ? 1 : -1;
   }
   return 0;
+}
+
+function trusted(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:' || u.username || u.password || (u.port && u.port !== '443')) return false;
+    if (u.hostname === 'github.com') return u.pathname.startsWith(ROOT + 'download/');
+    if (u.hostname === 'api.github.com') return u.pathname.startsWith(API_ROOT);
+    return ['objects.githubusercontent.com', 'release-assets.githubusercontent.com'].includes(u.hostname);
+  } catch { return false; }
+}
+
+async function fileHash(file) {
+  const hash = crypto.createHash('sha256');
+  for await (const data of fs.createReadStream(file)) hash.update(data);
+  return hash.digest('hex');
 }
 
 class Updater extends EventEmitter {
@@ -49,244 +46,204 @@ class Updater extends EventEmitter {
     super();
     this.version = o.version;
     this.dir = path.join(o.userData, 'updates');
-    this.log = o.log || (() => {});
     this.markerFile = path.join(o.userData, 'updated.json');
-
+    this.portablePath = o.portablePath || '';
+    this.installDir = o.installDir || '';
+    this.log = o.log || (() => {});
     this.latest = null;
     this.file = null;
-    this.state = 'idle';   // idle | checking | available | downloading | ready | installing | error
+    this.state = 'idle';
     this.progress = null;
     this.error = null;
     this.abort = null;
+    this.checking = null;
+    this.downloadBusy = false;
   }
 
-  snapshot() {
-    return {
-      state: this.state,
-      current: this.version,
-      latest: this.latest,
-      progress: this.progress,
-      error: this.error
-    };
-  }
-
-  emitState() {
-    this.emit('update', this.snapshot());
-  }
-
-  setState(state, extra) {
+  snapshot() { return { state: this.state, current: this.version, latest: this.latest, progress: this.progress, error: this.error }; }
+  emitState() { this.emit('update', this.snapshot()); }
+  setState(state, extra = {}) {
     this.state = state;
-    if (extra && 'error' in extra) this.error = extra.error;
+    if ('error' in extra) this.error = extra.error;
     this.emitState();
   }
+  trusted(url) { return trusted(url); }
 
-  /** Ссылку принимаем только с известных хостов GitHub и только из нашего репозитория. */
-  trusted(url) {
-    try {
-      const u = new URL(url);
-      if (u.protocol !== 'https:') return false;
-      if (!ALLOWED_HOSTS.includes(u.hostname)) return false;
-      if (u.hostname === 'github.com' && !u.pathname.startsWith(DOWNLOAD_PREFIX)) return false;
-      return true;
-    } catch {
-      return false;
-    }
+  check() {
+    if (this.checking) return this.checking;
+    if (['downloading', 'ready', 'installing'].includes(this.state)) return Promise.resolve(this.snapshot());
+    this.checking = this.checkInner().finally(() => { this.checking = null; });
+    return this.checking;
   }
 
-  /** Есть ли релиз новее нашего. Ошибок не бросает: обновление не повод падать. */
-  async check() {
-    if (this.state === 'downloading' || this.state === 'installing') return this.snapshot();
+  async checkInner() {
     this.setState('checking', { error: null });
     try {
-      const r = await fetch(API, {
-        headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'EVA VPN' },
-        signal: AbortSignal.timeout(15000)
-      });
-      if (!r.ok) throw new Error(t('GitHub ответил ') + r.status);
-      const rel = await r.json();
-      if (rel.draft || rel.prerelease) throw new Error(t('последний релиз черновой'));
-
+      const rel = await readJSON(API, { trusted, signal: AbortSignal.timeout(20000),
+        headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' } });
       const version = String(rel.tag_name || '').replace(/^v/, '');
-      if (!version) throw new Error(t('в релизе нет номера версии'));
-
+      if (rel.draft || rel.prerelease || !VERSION.test(version)) throw fail(t('В релизе нет подходящей версии'));
+      this.file = null;
+      this.progress = null;
       if (compare(version, this.version) <= 0) {
         this.latest = null;
         this.setState('idle');
         return this.snapshot();
       }
-
-      // нужен установщик, а не портативная сборка: она ничего не обновляет
-      const asset = (rel.assets || []).find(
-        (a) => /\.exe$/i.test(a.name) && !/portable/i.test(a.name)
-      );
-      if (!asset) throw new Error(t('в релизе нет установщика'));
-
+      const name = 'EVA-VPN-' + version + (this.portablePath ? '-portable.exe' : '-x64.exe');
+      const asset = (rel.assets || []).find((a) => a.name === name && a.state === 'uploaded');
+      if (!asset || !Number.isSafeInteger(asset.size) || asset.size <= 0 || asset.size > 512 * 1024 * 1024) throw fail(t('В релизе нет подходящего файла обновления'));
       const url = String(asset.browser_download_url || '');
-      if (!this.trusted(url)) throw new Error(t('ссылка на файл ведёт не на GitHub'));
-
-      const sha256 = String(asset.digest || '').replace(/^sha256:/, '');
-      if (!/^[0-9a-f]{64}$/.test(sha256)) {
-        throw new Error(t('GitHub не дал контрольную сумму, ставить такое нельзя'));
-      }
-
-      this.latest = {
-        version,
-        notes: String(rel.body || '').trim(),
-        name: asset.name,
-        url,
-        size: asset.size || 0,
-        sha256
-      };
-      this.log(t('Доступно обновление ') + version + ' (' + Math.round((asset.size || 0) / 1048576) + t(' МБ)'));
+      const u = new URL(url);
+      if (!trusted(url) || u.hostname !== 'github.com' || u.pathname !== ROOT + 'download/v' + version + '/' + name) throw fail(t('Неверная ссылка на обновление'));
+      const sha256 = String(asset.digest || '').replace(/^sha256:/, '').toLowerCase();
+      if (!HASH.test(sha256)) throw fail(t('GitHub не дал контрольную сумму, ставить такое нельзя'));
+      this.latest = { version, name, url, size: asset.size, sha256, notes: String(rel.body || '').trim(),
+        apiUrl: Number.isSafeInteger(asset.id) ? 'https://api.github.com' + API_ROOT + 'assets/' + asset.id : null };
+      this.log(t('Доступно обновление ') + version);
       this.setState('available');
-    } catch (e) {
+    } catch (error) {
       this.latest = null;
-      this.setState('idle', { error: e.message });
+      this.setState('error', { error: error.name === 'TimeoutError' ? t('GitHub не отвечает. Повторите проверку.') : error.message });
     }
     return this.snapshot();
   }
 
   async download() {
-    if (!this.latest) return { ok: false, error: t('нечего скачивать') };
-    if (this.state === 'downloading') return { ok: false, error: t('уже качается') };
-
-    const target = path.join(this.dir, this.latest.name);
-    this.abort = new AbortController();
-    this.progress = { received: 0, total: this.latest.size, percent: 0, speed: 0 };
+    if (!this.latest) return { ok: false, error: t('Нечего скачивать') };
+    if (this.downloadBusy || ['checking', 'downloading', 'installing'].includes(this.state)) return { ok: false, error: t('Обновление уже выполняется') };
+    if (this.state === 'ready' && this.file) return { ok: true };
+    this.downloadBusy = true;
+    const release = this.latest;
+    const target = path.join(this.dir, release.name);
+    const part = target + '.part';
+    const controller = new AbortController();
+    this.abort = controller;
+    this.file = null;
+    let cancelled = false;
+    this.cancelDownload = () => {
+      cancelled = true;
+      controller.abort(Object.assign(new Error(t('отменено')), { name: 'AbortError' }));
+    };
+    const deadline = setTimeout(() => controller.abort(fail(t('Время загрузки истекло. Повторите обновление.'), true)), 10 * 60 * 1000);
+    this.progress = { received: 0, total: release.size, percent: 0, speed: 0, attempt: 1 };
     this.setState('downloading', { error: null });
-
     try {
-      fs.mkdirSync(this.dir, { recursive: true });
-      this.sweep(this.latest.name);
-
-      const r = await fetch(this.latest.url, {
-        headers: { 'User-Agent': 'EVA VPN' },
-        signal: this.abort.signal,
-        redirect: 'follow'
-      });
-      if (!r.ok) throw new Error(t('сервер ответил ') + r.status);
-      if (!this.trusted(r.url)) throw new Error(t('загрузка увела на посторонний адрес'));
-
-      const total = Number(r.headers.get('content-length')) || this.latest.size;
-      const hash = crypto.createHash('sha256');
-      const out = fs.createWriteStream(target);
-
-      let received = 0;
-      let mark = Date.now();
-      let markBytes = 0;
-      let speed = 0;
-      let shown = 0;
-
-      for await (const chunk of r.body) {
-        const buf = Buffer.from(chunk);
-        hash.update(buf);
-        if (!out.write(buf)) await new Promise((res) => out.once('drain', res));
-
-        received += buf.length;
-        markBytes += buf.length;
-        const dt = Date.now() - mark;
-        if (dt >= 400) {
-          speed = Math.round((markBytes * 1000) / dt);
-          mark = Date.now();
-          markBytes = 0;
-        }
-        this.progress = {
-          received,
-          total,
-          percent: total ? Math.min(100, Math.round((received / total) * 100)) : 0,
-          speed
-        };
-        // Кусок приходит по 16 КБ: на 80 мегабайтах это пять тысяч событий.
-        // Глазу хватает восьми в секунду, окну — тем более.
-        if (Date.now() - shown >= 120) {
-          shown = Date.now();
+      await fs.promises.mkdir(this.dir, { recursive: true });
+      this.sweep(release.name);
+      const urls = [release.url, release.apiUrl || release.url, release.url];
+      for (let attempt = 0; attempt < urls.length; attempt++) {
+        controller.signal.throwIfAborted();
+        await fs.promises.rm(part, { force: true });
+        let stream;
+        try {
+          this.progress = { received: 0, total: release.size, percent: 0, speed: 0, attempt: attempt + 1 };
           this.emitState();
-        }
+          stream = await openResponse(urls[attempt], { trusted, signal: controller.signal,
+            headers: { Accept: 'application/octet-stream', 'Cache-Control': 'no-cache' } });
+          const headerSize = Number(stream.response.headers['content-length']);
+          if (headerSize && headerSize !== release.size) throw fail(t('Размер файла не совпал с заявленным'), true);
+          const hash = crypto.createHash('sha256');
+          let received = 0;
+          let mark = Date.now();
+          let markBytes = 0;
+          let shown = 0;
+          let speed = 0;
+          const measure = new Transform({ transform: (chunk, _encoding, callback) => {
+            stream.touch();
+            received += chunk.length;
+            if (received > release.size) return callback(fail(t('Размер файла не совпал с заявленным')));
+            hash.update(chunk);
+            markBytes += chunk.length;
+            const dt = Date.now() - mark;
+            if (dt >= 400) { speed = Math.round(markBytes * 1000 / dt); mark = Date.now(); markBytes = 0; }
+            this.progress = { received, total: release.size, percent: Math.min(99, Math.floor(received * 100 / release.size)), speed, attempt: attempt + 1 };
+            if (Date.now() - shown >= 120) { shown = Date.now(); this.emitState(); }
+            callback(null, chunk);
+          } });
+          await pipeline(stream.response, measure, fs.createWriteStream(part, { flags: 'wx' }), { signal: controller.signal });
+          controller.signal.throwIfAborted();
+          if (received !== release.size || hash.digest('hex') !== release.sha256) throw fail(t('Контрольная сумма или размер файла не совпали. Установка отменена.'));
+          await fs.promises.rm(target, { force: true });
+          await fs.promises.rename(part, target);
+          controller.signal.throwIfAborted();
+          this.file = target;
+          this.progress = { received, total: received, percent: 100, speed: 0, attempt: attempt + 1 };
+          this.log(t('Обновление загружено и проверено по SHA-256: ') + release.version);
+          this.setState('ready');
+          return { ok: true };
+        } catch (error) {
+          if (controller.signal.aborted) throw controller.signal.reason;
+          if (!error.retryable || attempt === urls.length - 1) throw error;
+          this.log(t('GitHub не отдал файл, повторяю загрузку: ') + (attempt + 2) + '/3');
+        } finally { if (stream) stream.close(); }
       }
-      this.emitState();
-
-      await new Promise((res, rej) => out.end((e) => (e ? rej(e) : res())));
-
-      const got = hash.digest('hex');
-      if (got !== this.latest.sha256) {
-        fs.rmSync(target, { force: true });
-        throw new Error(t('контрольная сумма не сошлась: файл повреждён или подменён'));
-      }
-      if (this.latest.size && received !== this.latest.size) {
-        fs.rmSync(target, { force: true });
-        throw new Error(t('размер файла не совпал с заявленным'));
-      }
-
-      this.file = target;
-      this.log(t('Обновление ') + this.latest.version + t(' загружено и проверено по sha256'));
-      this.setState('ready');
-      return { ok: true };
-    } catch (e) {
-      try { fs.rmSync(target, { force: true }); } catch { /* уже нет */ }
-      const cancelled = e.name === 'AbortError';
+    } catch (error) {
       this.progress = null;
-      this.setState(cancelled ? 'available' : 'error', { error: cancelled ? null : e.message });
-      if (!cancelled) this.log(t('Обновление не загрузилось: ') + e.message);
-      return { ok: false, cancelled, error: cancelled ? t('отменено') : e.message };
+      this.setState(cancelled ? 'available' : 'error', { error: cancelled ? null : error.message });
+      if (!cancelled) this.log(t('Обновление не загрузилось: ') + error.message);
+      return { ok: false, cancelled, error: error.message };
     } finally {
+      clearTimeout(deadline);
       this.abort = null;
+      this.cancelDownload = null;
+      await fs.promises.rm(part, { force: true }).catch(() => {});
+      this.downloadBusy = false;
     }
   }
 
-  cancel() {
-    if (this.abort) this.abort.abort();
-    return { ok: true };
-  }
+  cancel() { if (this.cancelDownload) this.cancelDownload(); return { ok: true }; }
 
-  /** Чистим прошлые загрузки: держать по 85 МБ от каждой версии незачем. */
   sweep(keep) {
     try {
-      for (const f of fs.readdirSync(this.dir)) {
-        if (f !== keep) fs.rmSync(path.join(this.dir, f), { force: true });
+      for (const entry of fs.readdirSync(this.dir, { withFileTypes: true })) {
+        if (entry.isFile() && /^EVA-VPN-\d+\.\d+\.\d+-(x64|portable)\.exe(\.part)?$/.test(entry.name) && entry.name !== keep) {
+          fs.rmSync(path.join(this.dir, entry.name), { force: true });
+        }
       }
-    } catch { /* каталога может ещё не быть */ }
+    } catch { /* a previous installer may still be using its file */ }
   }
 
-  /**
-   * Запускает установщик и уходит. Метку читает уже новая версия при первом
-   * запуске: по ней показывается благодарность и восстанавливается подключение.
-   *
-   * /S — тихая установка, путь берётся из записи о прошлой установке.
-   * --force-run — запустить приложение, когда установка закончится.
-   */
-  install(o) {
-    const opts = o || {};
-    if (this.state !== 'ready' || !this.file || !fs.existsSync(this.file)) {
-      return { ok: false, error: t('файл обновления не готов') };
-    }
+  async install(o = {}) {
+    if (this.state !== 'ready' || !this.file || !this.latest) return { ok: false, error: t('Файл обновления не готов') };
+    const release = this.latest;
+    this.setState('installing', { error: null });
     try {
-      fs.writeFileSync(this.markerFile, JSON.stringify({
-        from: this.version,
-        to: this.latest.version,
-        at: Date.now(),
-        connect: Boolean(opts.connect)
-      }), 'utf8');
-    } catch { /* без метки просто не будет благодарности */ }
-
-    this.setState('installing');
-    this.log(t('Запускаю установку ') + this.latest.version);
-
-    const child = spawn(this.file, ['/S', '--force-run'], { detached: true, stdio: 'ignore' });
-    child.unref();
-    return { ok: true };
+      if ((await fs.promises.stat(this.file)).size !== release.size || await fileHash(this.file) !== release.sha256) throw fail(t('Файл обновления изменился. Скачайте его заново.'));
+      fs.writeFileSync(this.markerFile, JSON.stringify({ from: this.version, to: release.version, at: Date.now(), connect: Boolean(o.connect) }), 'utf8');
+      let child;
+      if (this.portablePath) {
+        const source = path.join(__dirname, 'portable-update.ps1');
+        // Windows PowerShell cannot read inside app.asar.
+        const script = path.join(this.dir, 'portable-update.ps1');
+        await fs.promises.writeFile(script, await fs.promises.readFile(source));
+        const powershell = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+        child = spawn(powershell, ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', script,
+          '-ParentId', String(process.pid), '-Target', this.portablePath, '-Source', this.file, '-ExpectedHash', release.sha256],
+        { detached: true, stdio: 'ignore', windowsHide: true });
+      } else {
+        const args = ['--updated', '/S', '--force-run'];
+        if (this.installDir) args.push('/D=' + this.installDir);
+        child = spawn(this.file, args, { detached: true, stdio: 'ignore', windowsHide: true });
+      }
+      await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+      child.unref();
+      this.log(t('Запущено обновление ') + release.version);
+      return { ok: true };
+    } catch (error) {
+      try { fs.rmSync(this.markerFile, { force: true }); } catch { /* no marker */ }
+      this.setState('error', { error: error.message });
+      return { ok: false, error: error.message };
+    }
   }
 
-  /** Метка «только что обновились». Читается один раз: файл сразу удаляется. */
   takeMarker() {
     try {
-      const raw = fs.readFileSync(this.markerFile, 'utf8');
+      const marker = JSON.parse(fs.readFileSync(this.markerFile, 'utf8'));
       fs.rmSync(this.markerFile, { force: true });
-      const m = JSON.parse(raw);
-      if (!m || Date.now() - (m.at || 0) > 24 * 3600 * 1000) return null;
-      return m;
-    } catch {
-      return null;
-    }
+      if (!marker || marker.to !== this.version || !Number.isFinite(marker.at) || Date.now() - marker.at > 24 * 3600 * 1000 || marker.at > Date.now() + 60000) return null;
+      return marker;
+    } catch { return null; }
   }
 }
 

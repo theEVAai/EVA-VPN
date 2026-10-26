@@ -15,7 +15,7 @@ const crypto = require('crypto');
 const INET_KEY = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings';
 const BYPASS = 'localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*;172.28.*;172.29.*;172.30.*;172.31.*;192.168.*;<local>';
 
-function runPs(script, timeout = 30000) {
+function runPs(script, timeout = 30000, signal) {
   return new Promise((resolve) => {
     const file = path.join(os.tmpdir(), 'evavpn-' + crypto.randomBytes(6).toString('hex') + '.ps1');
     try {
@@ -26,7 +26,7 @@ function runPs(script, timeout = 30000) {
     execFile(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', file],
-      { timeout, windowsHide: true },
+      { timeout, windowsHide: true, ...(signal ? { signal } : {}) },
       (err, stdout, stderr) => {
         try { fs.unlinkSync(file); } catch { /* не важно */ }
         resolve({ code: err ? (err.code || 1) : 0, stdout: String(stdout || ''), stderr: String(stderr || '') });
@@ -119,34 +119,40 @@ async function foreignTunnels(ourAlias = TUN_NAME) {
   });
 }
 
-/** Ждёт, пока процесс ядра действительно исчезнет: taskkill возвращается раньше. */
-async function waitProcessGone(name = 'sing-box', timeoutMs = 10000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const r = await runPs("Write-Output (@(Get-Process '" + name + "' -ErrorAction SilentlyContinue).Count)", 8000);
-    if (r.stdout.trim().endsWith('0')) return true;
-    await new Promise((res) => setTimeout(res, 300));
-  }
-  return false;
-}
-
 /** Ждёт, пока адаптер прошлой сессии окончательно исчезнет из системы. */
-async function waitAdapterGone(alias, timeoutMs = 10000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const r = await runPs(
-      "Write-Output (@(Get-NetAdapter -Name '" + String(alias).replace(/'/g, "''") + "' -ErrorAction SilentlyContinue).Count)",
-      8000
-    );
-    if (r.stdout.trim().endsWith('0')) return true;
-    await new Promise((res) => setTimeout(res, 500));
-  }
-  return false;
+async function waitAdapterGone(alias, timeoutMs = 4000, signal) {
+  // A disconnected Wintun adapter can remain registered after its owner exits.
+  // Only a live adapter prevents reuse. Poll inside one PowerShell process.
+  const name = String(alias).replace(/'/g, "''");
+  const r = await runPs(
+    '$deadline = [DateTime]::UtcNow.AddMilliseconds(' + timeoutMs + ')\n' +
+    'do {\n' +
+    "  $active = @(Get-NetAdapter -Name '" + name + "' -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' })\n" +
+    "  if ($active.Count -eq 0) { Write-Output 'GONE'; exit 0 }\n" +
+    '  Start-Sleep -Milliseconds 250\n' +
+    '} while ([DateTime]::UtcNow -lt $deadline)\n' +
+    "Write-Output 'BUSY'", timeoutMs + 8000, signal
+  );
+  return r.code === 0 && r.stdout.trim() === 'GONE';
 }
 
 /** Снимает зависшие процессы ядра (например, после падения приложения). */
-async function killOrphanCores() {
-  const r = await runCmd('taskkill', ['/F', '/IM', 'sing-box.exe', '/T']);
+async function killOrphanCores(coreExe, configFile, signal) {
+  // Never terminate another client's sing-box. Both the executable and the
+  // configuration must belong to this EVA installation/user profile.
+  if (!coreExe || !configFile) return false;
+  const exe = path.resolve(coreExe).replace(/'/g, "''");
+  const config = path.resolve(configFile).replace(/'/g, "''");
+  const r = await runPs(
+    "$exe = '" + exe + "'\n$config = '" + config + "'\n" +
+    'Get-CimInstance Win32_Process -Filter "Name=\'sing-box.exe\'" -ErrorAction SilentlyContinue |\n' +
+    '  Where-Object { $_.ExecutablePath -eq $exe -and $_.CommandLine -and $_.CommandLine.IndexOf($config, [StringComparison]::OrdinalIgnoreCase) -ge 0 } |\n' +
+    '  ForEach-Object {\n' +
+    '    $ownedPid = [int]$_.ProcessId\n' +
+    '    Stop-Process -Id $ownedPid -Force -ErrorAction SilentlyContinue\n' +
+    '    Wait-Process -Id $ownedPid -Timeout 5 -ErrorAction SilentlyContinue\n' +
+    '  }', 12000, signal
+  );
   return r.code === 0;
 }
 
@@ -173,10 +179,10 @@ async function flushDns() {
  * снимает системный прокси, убирает мёртвые маршруты и DNS от исчезнувших TUN-адаптеров,
  * сбрасывает кэш DNS. Не трогает то, что настроил пользователь.
  */
-async function repairNetwork({ deep = false } = {}) {
+async function repairNetwork({ deep = false, coreExe, configFile } = {}) {
   const report = [];
 
-  await killOrphanCores();
+  await killOrphanCores(coreExe, configFile);
   report.push('Остановлены зависшие процессы ядра');
 
   // снимаем блокировки, которые мог оставить упавший клиент (наш или чужой)
@@ -264,6 +270,12 @@ function dropGuard() {
 }
 
 const VPN_PATTERN = 'Wintun|TAP-Windows|TAP-NDIS|OpenVPN|WireGuard|NordLynx|Amnezia|Proton|Outline|Cloudflare WARP|Tunnel';
+
+async function refreshTunPriority(alias = TUN_NAME) {
+  const name = String(alias).replace(/'/g, "''");
+  return runPs("foreach ($family in @('IPv4','IPv6')) { Set-NetIPInterface -InterfaceAlias '" + name +
+    "' -AddressFamily $family -InterfaceMetric 1 -ErrorAction SilentlyContinue }");
+}
 
 /**
  * Делает наш туннель главным: метрика 1 у нас, чужие туннели отодвигаем на 9000.
@@ -486,10 +498,10 @@ module.exports = {
   LOCAL_DAEMONS,
   flushRouteCaches,
   foreignTunnels,
-  waitProcessGone,
   waitAdapterGone,
   tunAlias,
   applyPriority,
+  refreshTunPriority,
   restorePriority,
   enableKillSwitch,
   disableKillSwitch,

@@ -36,6 +36,11 @@ class Core extends EventEmitter {
     this.priorityApplied = false;
     this.killSwitchOn = false;
     this.lastError = '';
+    this.startAbort = null;
+    this.stopPromise = null;
+    this.exitCleanup = Promise.resolve();
+    this.run = null;
+    this.initialPing = null;
   }
 
   log(line) {
@@ -56,7 +61,16 @@ class Core extends EventEmitter {
     return path.join(this.paths.userData, 'current-config.json');
   }
 
-  async start(profile, mode, settings, attempt = 1) {
+  cancelStart() {
+    if (this.startAbort) this.startAbort.abort();
+  }
+
+  validate(profile, mode, settings) {
+    return buildConfig({ profile, profiles: settings.profiles || [], mode, opts: settings,
+      paths: { srss: this.paths.srss, cache: path.join(this.paths.userData, 'cache.db') } });
+  }
+
+  async start(profile, mode, settings) {
     // Два запуска одновременно — это два ядра, дерущихся за один сетевой
     // адаптер и один файл кэша. Именно так рождались «Cannot create a file
     // when that file already exists» и «initialize cache-file: timeout».
@@ -64,27 +78,42 @@ class Core extends EventEmitter {
       this.log(t('Запуск уже идёт — повторный запрос отброшен'));
       return { ok: false, error: t('Подключение уже выполняется') };
     }
+    // Configuration errors must leave an existing working tunnel intact.
+    const cfg = this.validate(profile, mode, settings);
     this.starting = true;
+    const controller = new AbortController();
+    this.startAbort = controller;
     try {
-      return await this.startInner(profile, mode, settings, attempt);
+      return await this.startInner(profile, mode, settings, controller.signal, cfg);
+    } catch (e) {
+      const cancelled = controller.signal.aborted;
+      const error = e.message || String(e);
+      try { await this.stop({ keepGuards: cancelled || this.killSwitchOn }); }
+      catch (cleanupError) {
+        this.lastError = cleanupError.message;
+        this.setState('error', { error: this.lastError });
+        return { ok: false, error: this.lastError };
+      }
+      if (cancelled) return { ok: false, cancelled: true };
+      this.lastError = error;
+      this.setState('error', { error });
+      return { ok: false, error };
     } finally {
       this.starting = false;
+      if (this.startAbort === controller) this.startAbort = null;
     }
   }
 
-  async startInner(profile, mode, settings, attempt = 1) {
+  async startInner(profile, mode, settings, signal, cfg) {
+    const current = () => signal.throwIfAborted();
     // Reject unsupported saved keys before stopping a working tunnel or
     // changing any network state.
-    const cfg = buildConfig({
-      profile,
-      profiles: settings.profiles || [],
-      mode,
-      opts: settings,
-      paths: { srss: this.paths.srss, cache: path.join(this.paths.userData, 'cache.db') }
-    });
     // при перезапуске killswitch не снимаем: иначе на несколько секунд
     // открывается прямой выход в сеть — ровно то, от чего он защищает
-    if (this.proc) await this.stop({ keepGuards: true });
+    const replacing = Boolean(this.proc);
+    if (this.proc) await this.stop({ keepGuards: this.mode === mode });
+    await this.exitCleanup;
+    current();
 
     this.profile = profile;
     this.mode = mode;
@@ -94,31 +123,51 @@ class Core extends EventEmitter {
     this.setState('starting');
 
     // подчищаем возможные хвосты прошлого запуска
-    await netfix.killOrphanCores();
-    // старое ядро держит файл кэша эксклюзивно: новое молча зависнет на его открытии
-    await netfix.waitProcessGone('sing-box');
+    if (!replacing) await netfix.killOrphanCores(this.paths.coreExe, this.configPath(), signal);
+    current();
     if (mode === 'tun') {
       // адаптер прошлой сессии умирает не мгновенно; если начать раньше,
       // новое ядро молча зависнет на создании туннеля
-      const gone = await netfix.waitAdapterGone(settings.tunName || netfix.tunAlias());
-      if (!gone) this.log(t('Прошлый адаптер ещё в системе — поднимаем туннель поверх'));
+      const gone = await netfix.waitAdapterGone(settings.tunName || netfix.tunAlias(), 4000, signal);
+      current();
+      if (!gone) throw new Error(t('Сетевой адаптер занят прошлым запуском'));
     }
+
+    if (mode !== 'tun' || settings.killSwitch === false) {
+      if (this.killSwitchOn) { await netfix.disableKillSwitch(); this.killSwitchOn = false; }
+    }
+    if (mode !== 'tun' || settings.vpnPriority === false) {
+      if (this.priorityApplied) { await netfix.restorePriority(); this.priorityApplied = false; }
+    }
+    current();
 
     const file = this.configPath();
     fs.writeFileSync(file, JSON.stringify(cfg, null, 2), 'utf8');
 
     this.log('$ sing-box run  (' + (mode === 'tun' ? t('туннель') : t('системный прокси')) + ', ' + profile.name + ')');
 
-    this.proc = spawn(this.paths.coreExe, ['run', '-c', file, '--disable-color'], {
+    const proc = spawn(this.paths.coreExe, ['run', '-c', file, '--disable-color'], {
       cwd: path.dirname(this.paths.coreExe),
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe']
     });
+    this.proc = proc;
+    const run = { proc, stopped: false, logs: [], exited: false };
+    this.run = run;
+    const output = (b) => {
+      if (this.run !== run) return;
+      for (const line of String(b).split(/\r?\n/)) {
+        run.logs.push(line);
+        if (run.logs.length > LOG_LIMIT) run.logs.shift();
+        this.log(line);
+      }
+    };
+    proc.stdout.on('data', output);
+    proc.stderr.on('data', output);
 
-    this.proc.stdout.on('data', (b) => String(b).split(/\r?\n/).forEach((l) => this.log(l)));
-    this.proc.stderr.on('data', (b) => String(b).split(/\r?\n/).forEach((l) => this.log(l)));
-
-    this.proc.on('error', (e) => {
+    proc.on('error', (e) => {
+      if (!proc.pid) run.exited = true;
+      if (this.run !== run || run.stopped) return;
       this.lastError = t('Не удалось запустить ядро: ') + e.message;
       this.log(this.lastError);
       // пока идёт запуск, наружу об ошибке сообщает только сам запуск:
@@ -126,50 +175,40 @@ class Core extends EventEmitter {
       if (!this.starting) this.setState('error', { error: this.lastError });
     });
 
-    this.proc.on('exit', (code) => {
+    proc.on('exit', (code) => {
+      run.exited = true;
+      if (this.proc !== proc || this.run !== run || run.stopped) return;
       // Ядро могли остановить мы сами — при перезапуске или повторной попытке.
       // Раньше такой выход считался аварией, снаружи планировался автоповтор,
       // и он стартовал поверх уже поднявшегося туннеля: два ядра дрались за адаптер.
       const wasRunning =
-        !this.intentionalStop && !this.starting &&
+        !this.starting &&
         (this.state === 'running' || this.state === 'starting');
       this.proc = null;
       this.stopStats();
-      if (this.proxyWasSet) {
-        netfix.clearSystemProxy();
-        this.proxyWasSet = false;
-      }
-      if (wasRunning) {
-        this.lastError = this.lastError || guessError(this.logs) || (t('Ядро завершилось (код ') + code + ')');
-        this.setState('error', { error: this.lastError });
-      } else {
-        this.setState('stopped');
-      }
+      const clearProxy = this.proxyWasSet;
+      this.proxyWasSet = false;
+      this.exitCleanup = (async () => {
+        if (clearProxy) await netfix.clearSystemProxy();
+        if (this.run !== run || run.stopped || this.starting) return;
+        if (wasRunning) {
+          this.lastError = this.lastError || guessError(run.logs) || (t('Ядро завершилось (код ') + code + ')');
+          this.setState('error', { error: this.lastError });
+        }
+      })().catch((e) => this.log(String(e.message || e)));
     });
 
     // создание TUN-адаптера на медленной машине занимает заметно дольше
-    const ready = await this.waitReady(mode === 'tun' ? 25000 : 15000);
+    const ready = await this.waitReady(mode === 'tun' ? 25000 : 15000, run, signal);
+    current();
     if (!ready) {
-      const err = guessError(this.logs) || t('Ядро не ответило вовремя');
-      this.log(t('Ядро не поднялось: ') + err);
-      await this.stop();
-      // wintun иногда не отдаёт устройство с первого раза — вторая попытка обычно проходит
-      if (attempt < 2) {
-        this.log(t('Повторная попытка запуска: убираю хвосты прошлой'));
-        await netfix.killOrphanCores();
-        await netfix.waitProcessGone('sing-box');
-        if (mode === 'tun') await netfix.waitAdapterGone(settings.tunName || netfix.tunAlias());
-        await new Promise((r) => setTimeout(r, 1500));
-        return this.startInner(profile, mode, settings, attempt + 1);
-      }
-      this.lastError = err;
-      this.setState('error', { error: err });
-      return { ok: false, error: err };
+      throw new Error(this.lastError || guessError(run.logs) || t('Ядро не ответило вовремя'));
     }
 
     if (mode === 'proxy') {
       await netfix.setSystemProxy(settings.mixedPort || 2080);
       this.proxyWasSet = true;
+      current();
       this.log(t('Системный прокси включён: 127.0.0.1:') + (settings.mixedPort || 2080));
     }
 
@@ -179,11 +218,17 @@ class Core extends EventEmitter {
       // Уже запущенные программы помнят, каким интерфейсом ходить к адресу.
       // Сброс кэшей заставляет их принять решение заново.
       await netfix.flushRouteCaches();
+      current();
 
       // наш туннель должен быть главным, иначе чужой VPN перетянет маршрут на себя
-      if (settings.vpnPriority !== false) {
+      if (settings.vpnPriority !== false && this.priorityApplied) {
+        await netfix.refreshTunPriority(alias);
+        current();
+      }
+      if (settings.vpnPriority !== false && !this.priorityApplied) {
         const demoted = await netfix.applyPriority(alias);
         this.priorityApplied = true;
+        current();
         this.log(
           t('Приоритет туннеля: метрика 1') +
           (demoted.length
@@ -197,7 +242,7 @@ class Core extends EventEmitter {
       }
 
       // всё, что попытается уйти мимо туннеля, брандмауэр не выпустит
-      if (settings.killSwitch !== false) {
+      if (settings.killSwitch !== false && !this.killSwitchOn) {
         const ks = await netfix.enableKillSwitch({
           alias,
           coreExe: this.paths.coreExe,
@@ -205,6 +250,7 @@ class Core extends EventEmitter {
           tunAddr: TUN_IPV4.split('/')[0]
         });
         this.killSwitchOn = true;
+        current();
         this.log(t('Killswitch включён: исходящий трафик мимо туннеля заблокирован'));
         if (ks && ks.disabledProfiles && ks.disabledProfiles.length) {
           const msg =
@@ -216,6 +262,8 @@ class Core extends EventEmitter {
       }
     }
 
+    current();
+    if (this.proc !== proc || run.exited) throw new Error(guessError(run.logs) || t('Ядро завершилось во время подключения'));
     this.startedAt = Date.now();
     this.stats = { up: 0, down: 0, upTotal: 0, downTotal: 0, connections: 0 };
     this.startStats();
@@ -223,15 +271,16 @@ class Core extends EventEmitter {
     return { ok: true };
   }
 
-  async waitReady(timeoutMs) {
+  async waitReady(timeoutMs, run, signal) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      if (!this.proc) return false;
+      signal.throwIfAborted();
+      if (this.run !== run || this.proc !== run.proc || run.exited) return false;
       try {
         const r = await fetch('http://127.0.0.1:' + this.clashPort + '/version', {
-          signal: AbortSignal.timeout(1500)
+          signal: AbortSignal.any([signal, AbortSignal.timeout(1500)])
         });
-        if (r.ok) return true;
+        if (r.ok && this.proc === run.proc && !run.exited) return true;
       } catch {
         /* ещё не поднялось */
       }
@@ -254,36 +303,45 @@ class Core extends EventEmitter {
   }
 
   async stop({ keepGuards = false } = {}) {
-    if (!this.proc) {
-      if (this.proxyWasSet) {
-        await netfix.clearSystemProxy();
-        this.proxyWasSet = false;
-      }
-      if (!keepGuards) await this.releaseGuards();
-      this.stopStats();
-      this.setState('stopped');
-      return;
+    if (!this.stopPromise) {
+      this.stopPromise = this.stopProcess();
     }
-    this.setState('stopping');
-    this.intentionalStop = true;
-    const proc = this.proc;
-    this.proc = null;
+    const pending = this.stopPromise;
+    try { await pending; }
+    finally { if (this.stopPromise === pending) this.stopPromise = null; }
+    if (!keepGuards) await this.releaseGuards();
+    this.setState('stopped');
+  }
+
+  async stopProcess() {
     this.stopStats();
-
-    try {
-      proc.kill();
-    } catch { /* уже мёртв */ }
-    await netfix.runCmd('taskkill', ['/F', '/T', '/PID', String(proc.pid)]).catch(() => {});
-    await netfix.waitProcessGone('sing-box');
-
+    await this.exitCleanup;
+    const proc = this.proc;
+    const run = this.run;
+    if (proc) {
+      this.setState('stopping');
+      if (run && run.proc === proc) run.stopped = true;
+      const gone = () => proc.exitCode !== null || proc.signalCode !== null || (run && run.exited);
+      const wait = (ms) => new Promise((resolve) => {
+        if (gone()) return resolve(true);
+        const done = () => { clearTimeout(timer); proc.removeListener('exit', done); resolve(gone()); };
+        const timer = setTimeout(done, ms);
+        proc.once('exit', done);
+      });
+      if (!gone()) {
+        try { proc.kill(); } catch { /* bounded wait below confirms exit */ }
+        if (!await wait(1500)) {
+          if (Number.isInteger(proc.pid)) await netfix.runCmd('taskkill', ['/F', '/T', '/PID', String(proc.pid)], 5000);
+          if (!await wait(5000)) throw new Error(t('Не удалось остановить предыдущее ядро. Повторите отключение.'));
+        }
+      }
+      if (this.proc === proc) this.proc = null;
+    }
     if (this.proxyWasSet) {
       await netfix.clearSystemProxy();
       this.proxyWasSet = false;
     }
-    if (!keepGuards) await this.releaseGuards();
     this.startedAt = 0;
-    this.intentionalStop = false;
-    this.setState('stopped');
   }
 
   /**
@@ -297,6 +355,7 @@ class Core extends EventEmitter {
     this.stopStats();
     this.statsAbort = new AbortController();
     this.streamTraffic();
+    const run = this.run;
 
     this.statsTimer = setInterval(async () => {
       try {
@@ -305,6 +364,7 @@ class Core extends EventEmitter {
         });
         if (!r.ok) return;
         const d = await r.json();
+        if (this.run !== run || this.state !== 'running') return;
         this.stats.upTotal = d.uploadTotal || 0;
         this.stats.downTotal = d.downloadTotal || 0;
         this.stats.connections = (d.connections || []).length;
@@ -314,11 +374,15 @@ class Core extends EventEmitter {
     }, 5000);
 
     this.pingTimer = setInterval(() => {
-      this.testDelay().then((delay) => this.emit('ping', { delay }));
+      this.testDelay().then((delay) => {
+        if (this.run === run && this.state === 'running') this.emit('ping', { delay });
+      });
     }, 30000);
     // первая проба сразу после того, как маршруты успели встать
-    setTimeout(() => {
-      this.testDelay().then((delay) => this.emit('ping', { delay }));
+    this.initialPing = setTimeout(() => {
+      if (this.run === run && this.state === 'running') this.testDelay().then((delay) => {
+        if (this.run === run) this.emit('ping', { delay });
+      });
     }, 2500);
   }
 
@@ -358,6 +422,8 @@ class Core extends EventEmitter {
   }
 
   stopStats() {
+    if (this.initialPing) clearTimeout(this.initialPing);
+    this.initialPing = null;
     if (this.statsTimer) clearInterval(this.statsTimer);
     this.statsTimer = null;
     if (this.pingTimer) clearInterval(this.pingTimer);

@@ -35,3 +35,15 @@ jobs:
         with:
           name: EVA-VPN-windows
           path: dist/*.exe
+
+      - name: Описание релиза
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $releaseVersion = (Get-Content -LiteralPath package.json | ConvertFrom-Json).version
+          $releaseNotes = Join-Path docs "RELEASE-$releaseVersion.md"
+          if (Test-Path -LiteralPath $releaseNotes) {
+            gh release edit "v$releaseVersion" --title "EVA VPN $releaseVersion" --notes-file $releaseNotes
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }

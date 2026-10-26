@@ -4,6 +4,7 @@ const $ = (id) => document.getElementById(id);
 const api = window.eva;
 
 let state = null;
+let keySelectionRequest = 0;
 
 /* ------------------------------------------------------------------ */
 /* Язык                                                                */
@@ -320,7 +321,9 @@ function renderUpdate(u) {
   else if (u.state === 'checking') hint.textContent = t('Смотрю, нет ли новой версии…');
   else if (u.state === 'installing') hint.textContent = t('Запускаю установщик. Приложение сейчас закроется и откроется заново.');
   else if (u.state === 'ready') hint.textContent = t('Файл загружен и проверен по контрольной сумме. Можно ставить.');
-  else if (u.state === 'downloading') hint.textContent = t('Подождите чуть-чуть — приложение обновится и запустится само.');
+  else if (u.state === 'downloading') hint.textContent = u.progress && u.progress.attempt > 1
+    ? t('Повторная загрузка: ') + u.progress.attempt + '/3'
+    : t('Скачиваю обновление. Загрузку можно отменить.');
   else if (has) {
     const mb = (u.latest.size / 1048576).toFixed(1);
     hint.textContent = t('Скачать нужно ') + mb + t(' МБ. ') +
@@ -380,7 +383,7 @@ function renderUpdateBar(u) {
       action = 'cancel';
       break;
     case 'ready':
-      label = t('// подождите чуть-чуть · ставлю');
+      label = t('// обновление скачано');
       width = 100;
       break;
     case 'installing':
@@ -414,7 +417,15 @@ function renderUpdateBar(u) {
  * Весь путь обновления по одному нажатию: проверить, скачать, поставить.
  * Второго подтверждения нет — человек уже сказал «обнови».
  */
-async function runUpdate() {
+let updateTask = null;
+function runUpdate() {
+  if (updateTask) return updateTask;
+  updateTask = runUpdateInner().catch((e) => toast(e.message || t('Не получилось обновиться'), 'err'))
+    .finally(() => { updateTask = null; });
+  return updateTask;
+}
+
+async function runUpdateInner() {
   if (!upd) return;
 
   // ещё не знаем, есть ли что ставить
@@ -712,7 +723,11 @@ async function loadLogs() {
 let toggleBusy = false;
 
 async function toggleVpn() {
-  // клик во время подключения раньше отменял его и запускал заново
+  // A second click cancels the current attempt; it never queues another start.
+  if (state && state.state === 'starting') {
+    await api.disconnect();
+    return;
+  }
   if (toggleBusy || document.body.classList.contains('busy')) return;
 
   if (document.body.classList.contains('locked')) {
@@ -724,8 +739,9 @@ async function toggleVpn() {
     return;
   }
   toggleBusy = true;
-  const res = await api.toggle();
-  toggleBusy = false;
+  let res;
+  try { res = await api.toggle(); }
+  finally { toggleBusy = false; }
   if (res && res.error === 'busy') return;
   if (res && res.error === 'need-admin') {
     $('modalAdmin').classList.add('show');
@@ -815,8 +831,11 @@ function wire() {
 
     const card = e.target.closest('.keycard');
     if (card) {
-      render(await api.selectKey(card.dataset.id));
-      toast(t('Ключ выбран'), 'ok');
+      const request = ++keySelectionRequest;
+      const next = await api.selectKey(card.dataset.id);
+      if (request !== keySelectionRequest) return;
+      render(next);
+      toast(next.selectionError || t('Ключ выбран'), next.selectionError ? 'err' : 'ok');
     }
   });
 
