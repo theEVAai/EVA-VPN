@@ -145,6 +145,14 @@ try {
       await evaluate('window.eva.removeKey("legacy-saved").then(render)');
       record('Upgrade retains the legacy key, active selection, color and settings');
     }
+    if (args.includes('--continue-fixture')) {
+      const previous = await snapshot();
+      assert.equal(previous.profiles.length, 3);
+      assert.ok(previous.profiles.every((profile) => profile.server === '127.0.0.1' && profile.uuid === '11111111-2222-4333-8444-555555555555'));
+      for (const rule of previous.settings.domainRules) await evaluate(`window.eva.domainRemove(${JSON.stringify(rule.id)})`);
+      for (const profile of previous.profiles) await evaluate(`window.eva.removeKey(${JSON.stringify(profile.id)}).then(render)`);
+      record('Portable opens the existing installed profile and saved keys');
+    }
     await screenshot('home');
     await click('#btnMenu');
     assert.equal(await evaluate('document.getElementById("panelMenu").classList.contains("open")'), true);

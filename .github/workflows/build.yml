@@ -34,6 +34,9 @@ jobs:
       - name: Пробная сборка (без публикации)
         run: npx electron-builder --win --publish never
 
+      - name: Загрузка обновления с GitHub, отмена и проверка SHA-256
+        run: node node_modules/electron/cli.js scripts/check-updater.cjs
+
       - name: Проверка установленного приложения и обновления с 0.3.1
         shell: pwsh
         run: |
