@@ -984,9 +984,12 @@ function wire() {
     await api.setSetting('mode', 'proxy');
     toggleVpn();
   });
-  $('admRestart').addEventListener('click', () => {
-    $('modalAdmin').classList.remove('show');
-    api.relaunchAdmin();
+  $('admRestart').addEventListener('click', async () => {
+    $('admRestart').disabled = true;
+    try {
+      if (await api.relaunchAdmin()) $('modalAdmin').classList.remove('show');
+      else toast(t('Перезапуск отменён'), 'err');
+    } finally { $('admRestart').disabled = false; }
   });
   $('modalAdmin').addEventListener('click', (e) => {
     if (e.target === $('modalAdmin')) $('modalAdmin').classList.remove('show');

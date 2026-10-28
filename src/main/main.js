@@ -3,7 +3,6 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu, shell, clipboard, nativeImage, dialog, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
 
 const { Core } = require('./core');
 const { Store } = require('./store');
@@ -18,6 +17,7 @@ const autostart = require('./autostart');
 const i18n = require('../renderer/i18n');
 const t = i18n.t;
 const { Updater } = require('./updater');
+const elevation = require('./elevation');
 
 const isDev = !app.isPackaged;
 const ROOT = path.join(__dirname, '..', '..');
@@ -273,6 +273,7 @@ async function doConnectInner(request = connectionRequest) {
   }
   let mode = store.settings.mode;
   if (mode === 'tun' && !adminRights) {
+    intended = false;
     return { ok: false, error: 'need-admin' };
   }
   intended = true;
@@ -448,25 +449,24 @@ function doReleaseGuards() {
   });
 }
 
-function relaunchAsAdmin() {
-  const exe = process.execPath;
-  let args;
-  if (isDev) args = [ROOT];
-  else args = process.argv.slice(1);
-  const argList = args.length ? ", -ArgumentList " + args.map((a) => "'" + a.replace(/'/g, "''") + "'").join(',') : '';
-  const cmd = "Start-Process -FilePath '" + exe.replace(/'/g, "''") + "' -Verb RunAs" + argList;
-  try {
-    spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', cmd], {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true
-    }).unref();
-  } catch (e) {
-    return false;
-  }
-  quitting = true;
-  setTimeout(() => app.quit(), 400);
-  return true;
+let elevationRequest = null;
+function relaunchAsAdmin(connect = true) {
+  if (elevationRequest) return elevationRequest;
+  elevationRequest = (async () => {
+    const exe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+    const args = (isDev ? [ROOT] : process.argv.slice(1))
+      .filter((arg) => !/^--wait-for-parent=/.test(arg) && arg !== '--connect-after-elevation');
+    args.push('--wait-for-parent=' + process.pid);
+    if (connect || intended || core?.state === 'running') args.push('--connect-after-elevation');
+    // UAC cancellation must leave the current app open. The elevated copy waits
+    // for this process to stop its core and exit before opening the profile.
+    const result = await netfix.runPs(elevation.command(exe, args), 120000);
+    if (result.code !== 0) return false;
+    quitting = true;
+    setTimeout(() => app.quit(), 100);
+    return true;
+  })().finally(() => { if (!quitting) elevationRequest = null; });
+  return elevationRequest;
 }
 
 /* ------------------------------------------------------------------ */
@@ -882,6 +882,7 @@ function registerIpc() {
 /* Запуск                                                              */
 /* ------------------------------------------------------------------ */
 
+elevation.waitForParent(process.argv).then(() => {
 const instanceLock = app.requestSingleInstanceLock();
 logFile.write('[app] single-instance lock: ' + instanceLock);
 if (!instanceLock) {
@@ -919,8 +920,14 @@ if (!instanceLock) {
 
     adminRights = await netfix.isAdmin();
 
+    let declinedElevation = false;
+    if (app.isPackaged && !adminRights && (store.settings.mode === 'tun' || fs.existsSync(netfix.GUARD_FILE))) {
+      if (await relaunchAsAdmin(false)) return;
+      declinedElevation = true;
+    }
+
     // если прошлый запуск завершился аварийно — снимаем оставшиеся блокировки
-    const leftovers = await netfix.guardCleanup();
+    const leftovers = adminRights ? await netfix.guardCleanup() : [];
     leftovers.forEach((l) => core.log(t('Восстановление после сбоя: ') + l));
 
     if (!fs.existsSync(paths.coreExe)) {
@@ -950,13 +957,21 @@ if (!instanceLock) {
       } else if (real !== store.settings.autoStart) {
         store.setSetting('autoStart', real);
       }
+      if (adminRights && store.settings.autoStart && store.settings.mode === 'tun') await autostart.enable(true);
     } catch { /* не критично */ }
 
     const wantConnect =
-      (justUpdated && justUpdated.connect) || store.settings.autoConnect;
+      (justUpdated && justUpdated.connect) || store.settings.autoConnect || process.argv.includes('--connect-after-elevation');
     if (wantConnect && store.activeProfile()) {
       const startupRequest = connectionRequest;
-      setTimeout(() => { if (connectionRequest === startupRequest && !quitting) doConnect(); }, 800);
+      setTimeout(async () => {
+        if (connectionRequest !== startupRequest || quitting) return;
+        if (store.settings.mode === 'tun' && !adminRights) {
+          if (declinedElevation) return;
+          intended = true;
+          if (!await relaunchAsAdmin()) send('toast', { text: t('Не удалось получить права администратора'), kind: 'err' });
+        } else doConnect();
+      }, 800);
     }
 
     // Первая проверка почти сразу: полоса внизу окна должна появиться
@@ -1003,6 +1018,11 @@ if (!instanceLock) {
     }
   });
 }
+}).catch((error) => {
+  logFile.write('[fatal] relaunch: ' + (error.stack || error.message));
+  dialog.showErrorBox('EVA VPN', error.message);
+  app.exit(1);
+});
 
 process.on('exit', (code) => {
   logFile.write('[app] exit: ' + code);

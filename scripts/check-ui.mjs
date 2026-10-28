@@ -45,7 +45,7 @@ const executable = packagedExe || require('electron');
 const launchArgs = packagedExe ? [] : [path.join(root, 'scripts/ui-test-host.cjs'), source, dataDir,
   path.resolve(option('--resources') || (source.endsWith('.asar') ? path.dirname(source) : root))];
 launchArgs.push('--remote-debugging-address=127.0.0.1', '--remote-debugging-port=' + port);
-if (packagedExe) launchArgs.push('--disable-gpu', '--enable-logging=file', '--log-file=' + path.join(evidence, 'chromium.log'));
+if (packagedExe) launchArgs.push('--enable-logging=file', '--log-file=' + path.join(evidence, 'chromium.log'));
 function launch(options = {}) {
   if (!packagedExe) return spawn(executable, launchArgs, { windowsHide: true, ...options });
   // The installed EXE requests administrator rights. ShellExecute honours its
@@ -271,6 +271,20 @@ try {
     await click('#btnPower');
     await waitFor(async () => (await snapshot()).state === 'stopped', 'disconnect');
     record('UI disconnect stops the core');
+    if (!packagedExe) {
+      await evaluate('window.eva.setSetting("mode", "tun")');
+      await click('#btnPower');
+      await waitFor(async () => await evaluate('document.getElementById("modalAdmin").classList.contains("show")'), 'admin request shown');
+      await click('#admRestart');
+      await waitFor(async () => !(await evaluate('document.getElementById("admRestart").disabled')), 'UAC cancellation handled');
+      assert.equal(await evaluate('document.getElementById("modalAdmin").classList.contains("show")'), true);
+      assert.equal((await snapshot()).state, 'stopped');
+      await click('#admProxy');
+      await waitFor(async () => (await snapshot()).state === 'running', 'proxy fallback after UAC cancellation');
+      assert.equal((await fixture.request(proxyPort)).status, 200);
+      await evaluate('window.eva.disconnect()');
+      record('UAC cancellation preserves the window and allows a working proxy connection');
+    }
     if (packagedExe) {
       // Clean CI machine only: exercise the installed app's actual Windows TUN,
       // routes and priority restore without touching a developer's active VPN.

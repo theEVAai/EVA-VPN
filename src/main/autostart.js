@@ -18,13 +18,15 @@ async function taskExists() {
 async function enable(elevated) {
   const exe = process.execPath;
   if (elevated && app.isPackaged) {
-    await runCmd('schtasks', [
+    const result = await runCmd('schtasks', [
       '/Create', '/TN', TASK,
       '/TR', '"' + exe + '" --hidden',
       '/SC', 'ONLOGON',
       '/RL', 'HIGHEST',
       '/F'
     ]);
+    if (result.code !== 0) return false;
+    app.setLoginItemSettings({ openAtLogin: false });
     return true;
   }
   app.setLoginItemSettings({ openAtLogin: true, args: ['--hidden'] });

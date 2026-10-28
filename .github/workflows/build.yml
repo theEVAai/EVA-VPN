@@ -35,7 +35,7 @@ jobs:
         id: windows-package
         with:
           path: dist
-          key: windows-package-${{ hashFiles('src/**', 'build/**', 'package.json', 'package-lock.json', 'electron-builder.yml', 'scripts/check-syntax.mjs') }}
+          key: windows-package-${{ hashFiles('src/**', 'build/**', 'core/**', 'package.json', 'package-lock.json', 'electron-builder.yml', 'scripts/check-syntax.mjs') }}
 
       - name: Пробная сборка (без публикации)
         if: steps.windows-package.outputs.cache-hit != 'true'

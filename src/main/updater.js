@@ -9,6 +9,8 @@ const path = require('path');
 const fs = require('fs');
 const { openResponse, readJSON, fail } = require('./update-http');
 const { t } = require('../renderer/i18n');
+const elevation = require('./elevation');
+const netfix = require('./netfix');
 
 const ROOT = '/theEVAai/EVA-VPN/releases/';
 const API_ROOT = '/repos/theEVAai/EVA-VPN/releases/';
@@ -212,6 +214,7 @@ class Updater extends EventEmitter {
       if ((await fs.promises.stat(this.file)).size !== release.size || await fileHash(this.file) !== release.sha256) throw fail(t('Файл обновления изменился. Скачайте его заново.'));
       fs.writeFileSync(this.markerFile, JSON.stringify({ from: this.version, to: release.version, at: Date.now(), connect: Boolean(o.connect) }), 'utf8');
       let child;
+      let installerArgs;
       if (this.portablePath) {
         const source = path.join(__dirname, 'portable-update.ps1');
         // Windows PowerShell cannot read inside app.asar.
@@ -224,13 +227,23 @@ class Updater extends EventEmitter {
       } else {
         const args = ['--updated', '/S', '--force-run'];
         if (this.installDir) args.push('/D=' + this.installDir);
+        installerArgs = args;
         // NSIS requires /D= to be the unquoted remainder of the command line.
         // Quote argv[0] ourselves and leave the last argument verbatim.
         child = spawn(this.file, args, { detached: true, stdio: 'ignore', windowsHide: true,
           windowsVerbatimArguments: true, argv0: '"' + this.file + '"' });
       }
-      await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
-      child.unref();
+      try {
+        await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+      } catch (error) {
+        if (!installerArgs || !['EACCES', 'EPERM', 'UNKNOWN'].includes(error.code)) throw error;
+        // A proxy-mode client may be unelevated. ShellExecute requests UAC for
+        // the checked NSIS installer and confirms that it actually started.
+        const result = await netfix.runPs(elevation.command(this.file, installerArgs, { nsis: true }), 120000);
+        if (result.code !== 0) throw fail(t('Установка отменена или не удалось получить права администратора'));
+        child = null;
+      }
+      child?.unref();
       this.log(t('Запущено обновление ') + release.version);
       return { ok: true };
     } catch (error) {

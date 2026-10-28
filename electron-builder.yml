@@ -29,8 +29,10 @@ win:
     - target: portable
       arch: [x64]
   icon: build/icon.ico
-  # Туннельный режим создаёт сетевой адаптер — Windows требует прав администратора
-  requestedExecutionLevel: requireAdministrator
+  # Chromium reuses this EXE for sandboxed GPU/utility children. Requiring admin
+  # in their shared manifest prevents them from starting on some Windows setups.
+  # The main process requests elevation separately when a TUN needs it.
+  requestedExecutionLevel: asInvoker
 
 nsis:
   # карта блоков нужна только electron-updater; своё обновление качает

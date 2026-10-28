@@ -19,6 +19,11 @@ Object.defineProperty(app, 'isPackaged', { value: true });
 Object.defineProperty(process, 'resourcesPath', { value: resourceDir });
 
 const netfix = require(path.join(source, 'src/main/netfix.js'));
+netfix.GUARD_FILE = path.join(dataDir, 'guard.json');
+netfix.isAdmin = async () => false;
+const runPs = netfix.runPs;
+netfix.runPs = (script, ...args) => / -Verb RunAs\b/.test(script)
+  ? Promise.resolve({ code: 1, stdout: '', stderr: 'UAC canceled (fixture)' }) : runPs(script, ...args);
 for (const name of ['setSystemProxy', 'clearSystemProxy', 'flushRouteCaches', 'refreshTunPriority', 'restorePriority', 'disableKillSwitch']) {
   netfix[name] = async () => true;
 }
