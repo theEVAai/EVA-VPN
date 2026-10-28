@@ -24,8 +24,10 @@ function Install-Eva([string]$file, [bool]$legacy = $false) {
 }
 
 function Check-Eva([string]$name, [string]$migration = '', [string]$executable = $appExe) {
-  & node scripts/check-ui.mjs --exe $executable --source (Join-Path $installDir 'resources/app.asar') --evidence (Join-Path $evidenceDir $name) $migration
-  if ($LASTEXITCODE -ne 0) { throw "$name acceptance failed" }
+  $result = & node scripts/check-ui.mjs --exe $executable --source (Join-Path $installDir 'resources/app.asar') --evidence (Join-Path $evidenceDir $name) $migration 2>&1
+  $testExitCode = $LASTEXITCODE
+  $result | ForEach-Object { Write-Output $_ }
+  if ($testExitCode -ne 0) { throw ("$name acceptance failed:`n" + (($result | Select-Object -Last 45) -join "`n")) }
 }
 
 try {
