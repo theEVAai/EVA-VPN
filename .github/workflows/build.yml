@@ -31,8 +31,21 @@ jobs:
           node scripts/check-network.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - uses: actions/cache/restore@v4
+        id: windows-package
+        with:
+          path: dist
+          key: windows-package-${{ hashFiles('src/**', 'build/**', 'package.json', 'package-lock.json', 'electron-builder.yml', 'scripts/check-syntax.mjs') }}
+
       - name: Пробная сборка (без публикации)
+        if: steps.windows-package.outputs.cache-hit != 'true'
         run: npx electron-builder --win --publish never
+
+      - uses: actions/cache/save@v4
+        if: steps.windows-package.outputs.cache-hit != 'true'
+        with:
+          path: dist
+          key: ${{ steps.windows-package.outputs.cache-primary-key }}
 
       - name: Загрузка обновления с GitHub, отмена и проверка SHA-256
         run: node node_modules/electron/cli.js scripts/check-updater.cjs

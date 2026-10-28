@@ -45,6 +45,7 @@ const executable = packagedExe || require('electron');
 const launchArgs = packagedExe ? [] : [path.join(root, 'scripts/ui-test-host.cjs'), source, dataDir,
   path.resolve(option('--resources') || (source.endsWith('.asar') ? path.dirname(source) : root))];
 launchArgs.push('--remote-debugging-address=127.0.0.1', '--remote-debugging-port=' + port);
+if (packagedExe) launchArgs.push('--disable-gpu', '--enable-logging=file', '--log-file=' + path.join(evidence, 'chromium.log'));
 function launch(options = {}) {
   if (!packagedExe) return spawn(executable, launchArgs, { windowsHide: true, ...options });
   // The installed EXE requests administrator rights. ShellExecute honours its
@@ -73,7 +74,7 @@ async function waitFor(check, label, timeout = 20000) {
   const end = Date.now() + timeout;
   while (Date.now() < end) {
     if (launchError) throw launchError;
-    if (child.exitCode !== null) throw new Error('Application exited: ' + output.slice(-4000));
+    if (child.exitCode !== null) throw new Error('Application exited (' + child.exitCode + '): ' + output.slice(-4000));
     try { const result = await check(); if (result) return result; } catch (error) {
       if (String(error).includes('Application exited')) throw error;
     }
@@ -313,11 +314,13 @@ try {
   }
 } catch (error) {
   let details = '';
+  const chromiumLog = path.join(evidence, 'chromium.log');
+  if (fs.existsSync(chromiumLog)) details += '\nChromium: ' + fs.readFileSync(chromiumLog, 'utf8').slice(-5000);
   if (ws?.readyState === WebSocket.OPEN && !expectedFailure) {
     try {
       const state = await snapshot();
       const logs = await evaluate('window.eva.logs()');
-      details = '\nState: ' + state.state + ', error: ' + state.error + '\n' + logs.slice(-12).join('\n');
+      details += '\nState: ' + state.state + ', error: ' + state.error + '\n' + logs.slice(-12).join('\n');
       fs.writeFileSync(path.join(evidence, 'failure-state.json'), JSON.stringify(state, null, 2));
       fs.writeFileSync(path.join(evidence, 'failure-core.log'), logs.join('\n'));
       await screenshot('failure');
