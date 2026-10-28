@@ -350,6 +350,10 @@ try {
   if (process.env.CI) console.log('::error title=Windows acceptance::' + (error.message + details).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A'));
   throw error;
 } finally {
+  if (!expectedFailure && child.exitCode === null && ws?.readyState === WebSocket.OPEN) {
+    try { await evaluate('window.eva.disconnect()'); await evaluate('window.eva.quit()'); }
+    catch { /* The scoped process cleanup below handles a failed renderer. */ }
+  }
   ws?.close();
   for (const request of pending.values()) { clearTimeout(request.timer); request.reject(new Error('Test finished')); }
   if (child.exitCode === null) child.kill();

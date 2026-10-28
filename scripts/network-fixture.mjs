@@ -98,7 +98,15 @@ export async function createNetworkFixture(coreExe) {
       });
     },
     async requestInternet() {
-      const addresses = await dns.resolve4('example.com');
+      // Node's default c-ares resolver caches the VM's pre-TUN DNS servers.
+      // Read the actual newly configured Windows TUN adapter instead.
+      const server = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+        "(Get-DnsClientServerAddress -InterfaceAlias 'EVA' -AddressFamily IPv4 -ErrorAction Stop).ServerAddresses | Select-Object -First 1"],
+      { windowsHide: true, encoding: 'utf8' }).trim();
+      if (!server) throw new Error('Windows did not configure DNS on the EVA adapter');
+      const resolver = new dns.Resolver({ timeout: 5000, tries: 2 });
+      resolver.setServers([server]);
+      const addresses = await resolver.resolve4('example.com');
       if (!addresses.length) throw new Error('DNS through the TUN returned no addresses');
       return new Promise((resolve, reject) => {
         const request = https.get('https://example.com', { agent: false, family: 4 }, (response) => {
