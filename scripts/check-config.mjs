@@ -13,6 +13,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
+const { removeFixtureDirectory } = require('./fixture-files.cjs');
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { parseLink, parseMany } = require(path.join(ROOT, 'src/main/parse.js'));
 const { buildConfig } = require(path.join(ROOT, 'src/main/config.js'));
@@ -70,7 +71,7 @@ if (parsed.length !== LINKS.length) {
   console.log(`✓ подписка base64: ${parsed.length} серверов`);
 }
 
-fs.rmSync(tmp, { recursive: true, force: true });
+removeFixtureDirectory(tmp, 'evacheck-');
 
 if (failed) {
   console.error(`\nОшибок: ${failed}`);

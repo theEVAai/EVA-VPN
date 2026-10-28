@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { createNetworkFixture, freePort, delay } from './network-fixture.mjs';
+import fixtureFiles from './fixture-files.cjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -77,5 +78,5 @@ try {
 } finally {
   await core.stop();
   await fixture.close();
-  fs.rmSync(dir, { recursive: true, force: true });
+  fixtureFiles.removeFixtureDirectory(dir, 'eva-core-');
 }

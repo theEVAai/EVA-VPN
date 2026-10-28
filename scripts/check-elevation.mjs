@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import { spawn, spawnSync } from 'node:child_process';
+import elevation from '../src/main/elevation.js';
+
+const command = elevation.command("C:\\EVA App\\O'Neil\\EVA.exe", ['C:\\Main Disk\\VPN APP', '--wait-for-parent=123']);
+assert.ok(command.includes("O''Neil"));
+assert.ok(command.includes('"C:\\Main Disk\\VPN APP"'));
+const nsis = elevation.command('C:\\EVA Update.exe', ['--updated', '/S', '/D=C:\\Program Files\\EVA'], { nsis: true });
+assert.ok(nsis.includes("-ArgumentList '--updated /S /D=C:\\Program Files\\EVA'"));
+const source = "$errors=$null; $tokens=$null; [System.Management.Automation.Language.Parser]::ParseInput(@'\n" + command + "\n'@,[ref]$tokens,[ref]$errors) | Out-Null; if($errors.Count){$errors; exit 1}";
+const parsed = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '-'], { input: source + '\n', encoding: 'utf8', windowsHide: true });
+assert.equal(parsed.status, 0, parsed.stderr + parsed.stdout);
+console.log('PASS elevation command preserves paths/quotes and valid PowerShell syntax');
+const parent = spawn(process.execPath, ['-e', 'setTimeout(()=>{},500)'], { windowsHide: true, stdio: 'ignore' });
+const started = Date.now();
+await elevation.waitForParent(['--wait-for-parent=' + parent.pid], 5000);
+assert.ok(Date.now() - started >= 300);
+if (parent.exitCode === null) await new Promise((resolve) => parent.once('exit', resolve));
+assert.notEqual(parent.exitCode, null);
+await assert.rejects(elevation.waitForParent(['--wait-for-parent=' + process.pid]), /Invalid relaunch parent/);
+console.log('PASS elevated copy waits for the previous process to exit and rejects self-wait');

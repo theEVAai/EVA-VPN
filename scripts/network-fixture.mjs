@@ -4,6 +4,7 @@ import os from 'node:os';
 import net from 'node:net';
 import http from 'node:http';
 import { spawn, execFileSync } from 'node:child_process';
+import fixtureFiles from './fixture-files.cjs';
 
 export const delay = (ms) => new Promise((resolve) => { setTimeout(resolve, ms).unref(); });
 export const freePort = () => new Promise((resolve, reject) => {
@@ -86,7 +87,7 @@ export async function createNetworkFixture(coreExe) {
       }
       origin.closeAllConnections();
       await new Promise((resolve) => origin.close(resolve));
-      fs.rmSync(dir, { recursive: true, force: true });
+      fixtureFiles.removeFixtureDirectory(dir, 'eva-network-');
     }
   };
 }

@@ -14,6 +14,7 @@ const args = process.argv.slice(2);
 const option = (name) => { const i = args.indexOf(name); return i < 0 ? null : args[i + 1]; };
 const source = path.resolve(option('--source') || root);
 const packagedExe = option('--exe');
+const launcherWaitMs = /-portable\.exe$/i.test(packagedExe || '') ? 60000 : 15000;
 const expectedFailure = args.includes('--expect-broken');
 if (packagedExe && !process.env.CI) throw new Error('Installed EXE acceptance requires a clean CI machine');
 const dataDir = option('--data') || fs.mkdtempSync(path.join(os.tmpdir(), 'eva-ui-'));
@@ -306,7 +307,7 @@ try {
     // Minimize/close-to-tray followed by second-instance launch must restore this window.
     await click('#btnClose');
     const second = launch({ stdio: 'ignore' });
-    await new Promise((resolve, reject) => { second.once('exit', resolve); second.once('error', reject); setTimeout(() => reject(new Error('Second instance did not exit')), 15000).unref(); });
+    await new Promise((resolve, reject) => { second.once('exit', resolve); second.once('error', reject); setTimeout(() => reject(new Error('Second instance did not exit')), launcherWaitMs).unref(); });
     assert.equal((await snapshot()).version, metadata.version);
     record('Close to tray and reopen through a second launch retain one working instance');
     assert.equal(exceptions.length, 0, JSON.stringify(exceptions));
@@ -322,7 +323,7 @@ try {
     await waitFor(async () => await evaluate('typeof firstPaint !== "undefined" && firstPaint === false && document.getElementById("startupError").hidden'), 'startup recovery');
     record('An injected renderer load failure shows the correct version and recovers with Reload');
     await evaluate('window.eva.quit()');
-    await Promise.race([new Promise((resolve) => child.once('exit', resolve)), delay(15000)]);
+    await Promise.race([new Promise((resolve) => child.once('exit', resolve)), delay(launcherWaitMs)]);
     assert.equal(child.exitCode, 0, 'Application must quit cleanly');
     record('Explicit exit shuts the application down cleanly');
   }

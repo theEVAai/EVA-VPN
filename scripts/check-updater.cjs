@@ -6,11 +6,22 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const assert = require('node:assert/strict');
+const { EventEmitter } = require('node:events');
+const childProcess = require('node:child_process');
+const originalSpawn = childProcess.spawn;
+let emulateElevation = false;
+childProcess.spawn = (...args) => {
+  if (!emulateElevation) return originalSpawn(...args);
+  const child = new EventEmitter();
+  process.nextTick(() => child.emit('error', Object.assign(new Error('Elevation required (fixture)'), { code: 'EACCES' })));
+  return child;
+};
+const netfix = require('../src/main/netfix');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'eva-updater-'));
 app.setPath('userData', dir);
 const { Updater } = require('../src/main/updater');
 app.whenReady().then(async () => {
-  const updater = new Updater({ version: '0.3.1', userData: dir });
+  const updater = new Updater({ version: '0.3.1', userData: dir, installDir: 'C:\\Program Files\\EVA Update Test' });
   assert.equal((await updater.install()).ok, false);
   const check = updater.check();
   assert.equal(updater.check(), check);
@@ -36,8 +47,25 @@ app.whenReady().then(async () => {
   assert.equal(updater.state, 'error');
   assert.equal(fs.existsSync(updater.markerFile), false);
   console.log('PASS a changed installer is rejected before starting installation');
+  fs.truncateSync(updater.file, release.latest.size);
+  emulateElevation = true;
+  let allowElevation = false;
+  netfix.runPs = async (command) => {
+    assert.ok(command.includes('-Verb RunAs'));
+    assert.ok(command.includes('/D=C:\\Program Files\\EVA Update Test'));
+    return { code: allowElevation ? 0 : 1, stdout: '', stderr: '' };
+  };
+  updater.setState('ready');
+  assert.equal((await updater.install()).ok, false);
+  assert.equal(fs.existsSync(updater.markerFile), false);
+  allowElevation = true;
+  updater.setState('ready');
+  assert.equal((await updater.install()).ok, true);
+  assert.equal(JSON.parse(fs.readFileSync(updater.markerFile, 'utf8')).to, release.latest.version);
+  childProcess.spawn = originalSpawn;
+  console.log('PASS UAC cancellation preserves the client, and approved elevation starts installation');
 }).then(() => {
   // Chromium still owns cache files until exit; delete only our download cache.
-  fs.rmSync(path.join(dir, 'updates'), { recursive: true, force: true });
+  require('./fixture-files.cjs').removeFixtureDirectory(dir, 'eva-updater-', 'updates');
   app.exit(0);
 }, (error) => { console.error(error); app.exit(1); });
