@@ -77,7 +77,9 @@ async function waitFor(check, label, timeout = 20000) {
     try { const result = await check(); if (result) return result; } catch (error) {
       if (String(error).includes('Application exited')) throw error;
     }
-    await delay(100);
+    // Keep the polling promise alive even if Windows exits the launched process
+    // before the first renderer appears, so its real exit is reported.
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error('Timed out: ' + label + '\n' + output.slice(-4000));
 }
