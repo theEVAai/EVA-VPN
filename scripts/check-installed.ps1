@@ -21,6 +21,11 @@ function Install-Eva([string]$file, [bool]$legacy = $false) {
   $process = Start-Process -FilePath $file -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
   if ($process.ExitCode -ne 0) { throw "Installer exited with $($process.ExitCode)" }
   if (-not (Test-Path -LiteralPath $appExe)) { throw 'Installer did not create the application.' }
+  $alreadyRunning = @(Get-CimInstance Win32_Process -Property ExecutablePath,ProcessId -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -eq $appExe })
+  Write-Output ('::notice title=Installer processes::Application processes immediately after install: ' + $alreadyRunning.Count)
+  # Acceptance needs to launch its own copy with a loopback debugging port.
+  # Stop only this disposable installation if the installer started it already.
+  $alreadyRunning | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 }
 
 function Check-Eva([string]$name, [string]$migration = '', [string]$executable = $appExe) {

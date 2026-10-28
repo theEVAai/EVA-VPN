@@ -24,6 +24,7 @@ const ROOT = path.join(__dirname, '..', '..');
 const RES = isDev ? ROOT : process.resourcesPath;
 
 const logFile = new LogFile(app.getPath('userData'));
+process.on('uncaughtExceptionMonitor', (error) => logFile.write('[fatal] ' + (error.stack || error.message)));
 
 const paths = {
   coreExe: path.join(RES, 'core', 'sing-box.exe'),
@@ -881,7 +882,9 @@ function registerIpc() {
 /* Запуск                                                              */
 /* ------------------------------------------------------------------ */
 
-if (!app.requestSingleInstanceLock()) {
+const instanceLock = app.requestSingleInstanceLock();
+logFile.write('[app] single-instance lock: ' + instanceLock);
+if (!instanceLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
@@ -975,6 +978,10 @@ if (!app.requestSingleInstanceLock()) {
     };
     setTimeout(refreshStale, 5000);
     setInterval(refreshStale, HALF_DAY);
+  }).catch((error) => {
+    logFile.write('[fatal] startup: ' + (error.stack || error.message));
+    dialog.showErrorBox('EVA VPN', t('Не удалось запустить приложение') + '\n' + error.message);
+    app.exit(1);
   });
 
   app.on('window-all-closed', (e) => {
@@ -997,7 +1004,8 @@ if (!app.requestSingleInstanceLock()) {
   });
 }
 
-process.on('exit', () => {
+process.on('exit', (code) => {
+  logFile.write('[app] exit: ' + code);
   try {
     if (core && core.proc) core.proc.kill();
   } catch { /* всё равно уходим */ }
