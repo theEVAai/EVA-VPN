@@ -45,8 +45,20 @@ const executable = packagedExe || require('electron');
 const launchArgs = packagedExe ? [] : [path.join(root, 'scripts/ui-test-host.cjs'), source, dataDir,
   path.resolve(option('--resources') || (source.endsWith('.asar') ? path.dirname(source) : root))];
 launchArgs.push('--remote-debugging-address=127.0.0.1', '--remote-debugging-port=' + port);
-const child = spawn(executable, launchArgs, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+function launch(options = {}) {
+  if (!packagedExe) return spawn(executable, launchArgs, { windowsHide: true, ...options });
+  // The installed EXE requests administrator rights. ShellExecute honours its
+  // manifest; CreateProcess used by Node.spawn cannot perform Windows elevation.
+  const quote = (value) => "'" + value.replace(/'/g, "''") + "'";
+  const command = "$ErrorActionPreference='Stop'; $evaProcess=Start-Process -FilePath " + quote(executable) +
+    ' -ArgumentList ' + quote(launchArgs.join(' ')) +
+    ' -WindowStyle Hidden -Wait -PassThru; exit $evaProcess.ExitCode';
+  return spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { windowsHide: true, ...options });
+}
+const child = launch({ stdio: ['pipe', 'pipe', 'pipe'] });
 let output = '';
+let launchError;
+child.on('error', (error) => { launchError = error; });
 child.stdout.on('data', (chunk) => { output += chunk; });
 child.stderr.on('data', (chunk) => { output += chunk; });
 let ws;
@@ -60,6 +72,7 @@ function record(name) { checks.push(name); console.log('PASS ' + name); }
 async function waitFor(check, label, timeout = 20000) {
   const end = Date.now() + timeout;
   while (Date.now() < end) {
+    if (launchError) throw launchError;
     if (child.exitCode !== null) throw new Error('Application exited: ' + output.slice(-4000));
     try { const result = await check(); if (result) return result; } catch (error) {
       if (String(error).includes('Application exited')) throw error;
@@ -275,7 +288,7 @@ try {
     }
     // Minimize/close-to-tray followed by second-instance launch must restore this window.
     await click('#btnClose');
-    const second = spawn(executable, launchArgs, { windowsHide: true, stdio: 'ignore' });
+    const second = launch({ stdio: 'ignore' });
     await new Promise((resolve, reject) => { second.once('exit', resolve); second.once('error', reject); setTimeout(() => reject(new Error('Second instance did not exit')), 15000).unref(); });
     assert.equal((await snapshot()).version, metadata.version);
     record('Close to tray and reopen through a second launch retain one working instance');
