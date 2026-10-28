@@ -13,9 +13,12 @@ $appExe = Join-Path $installDir 'EVA VPN.exe'
 $evidenceDir = Join-Path $PWD 'dist/acceptance'
 New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
 
-function Install-Eva([string]$file) {
+function Install-Eva([string]$file, [bool]$legacy = $false) {
   Write-Output "Installing $file into $installDir"
-  $process = Start-Process -FilePath $file -ArgumentList "/S /allusers /D=$installDir" -WindowStyle Hidden -Wait -PassThru
+  $arguments = "/S /allusers /D=$installDir"
+  # The old installer reparses /D with StdUtils and needs its legacy quoting.
+  if ($legacy) { $arguments = "/S /allusers /D=`"$installDir`"" }
+  $process = Start-Process -FilePath $file -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
   if ($process.ExitCode -ne 0) { throw "Installer exited with $($process.ExitCode)" }
   if (-not (Test-Path -LiteralPath $appExe)) { throw 'Installer did not create the application.' }
 }
@@ -39,7 +42,7 @@ try {
   if (-not $uninstaller) { throw 'Missing uninstaller' }
   $removed = Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S /allusers' -WindowStyle Hidden -Wait -PassThru
   if ($removed.ExitCode -ne 0) { throw 'CI uninstall failed' }
-  Install-Eva $legacy
+  Install-Eva $legacy $true
   $profileDir = Join-Path $env:APPDATA 'EVA VPN'
   New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
   # Preserve a legacy-compatible key and preference through the upgrade.

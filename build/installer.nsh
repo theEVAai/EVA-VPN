@@ -2,6 +2,20 @@
 ; Главное: после удаления в системе не должно остаться ничего — ни процессов ядра,
 ; ни задачи автозапуска, ни правил брандмауэра, ни включённого системного прокси.
 
+Var evaRequestedInstallDir
+
+!macro preInit
+  ; NSIS already parsed the final, unquoted /D= including spaces. Builder's
+  ; multi-user initialization reparses it with StdUtils and truncates at a space.
+  ; Preserve the native result before that initialization can overwrite it.
+  Push $0
+  ${StdUtils.GetParameter} $0 "D" ""
+  ${if} $0 != ""
+    StrCpy $evaRequestedInstallDir $INSTDIR
+  ${endif}
+  Pop $0
+!macroend
+
 !macro stopEvaCore
   ; Match our installation path, never all sing-box processes on the machine.
   Push $0
@@ -14,6 +28,9 @@
 
 !macro customInit
   InitPluginsDir
+  ${if} $evaRequestedInstallDir != ""
+    StrCpy $INSTDIR $evaRequestedInstallDir
+  ${endif}
   ; Older uninstallers delete this recovery record even during an upgrade.
   ; Preserve it so the new application can restore the original network state.
   ${if} ${FileExists} "$PROFILE\.eva-vpn-guard.json"
