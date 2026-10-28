@@ -1,7 +1,7 @@
 {
   "name": "eva-vpn",
   "productName": "EVA VPN",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "EVA VPN — простой клиент VLESS/Reality для Windows",
   "main": "src/main/main.js",
   "author": "theeva.ai",
@@ -14,6 +14,9 @@
     "pack": "electron-builder --win --dir",
     "fetch-core": "node scripts/fetch-core.mjs",
     "check": "node scripts/check-config.mjs",
+    "check:syntax": "node scripts/check-syntax.mjs",
+    "check:ui": "node scripts/check-ui.mjs",
+    "check:network": "node scripts/check-network.mjs",
     "icons": "python scripts/make-icons.py"
   },
   "devDependencies": {

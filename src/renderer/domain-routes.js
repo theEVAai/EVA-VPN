@@ -104,7 +104,7 @@ window.DomainRoutes = (() => {
         (missing ? `<p class="domain-missing">${esc(t('Выберите другой ключ. Пока правило включено, эти домены заблокированы.'))}</p>` : '') +
         `<div class="domain-rule-actions"><button type="button" data-domain-edit="${esc(rule.id)}">${esc(t('Изменить'))}</button>` +
         `<button type="button" data-domain-remove="${esc(rule.id)}" aria-label="${esc(t('Удалить правило'))}: ${esc(name)}"${changing ? ' disabled' : ''}>` +
-        '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7M14 10v7"/></svg></button></div></article>`;
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7M14 10v7"/></svg></button></div></article>';
     }).join('');
   }
 

@@ -17,7 +17,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Установка зависимостей
@@ -26,10 +26,31 @@ jobs:
       - name: Скачать ядро sing-box
         run: node scripts/fetch-core.mjs
 
+      - name: Проверки исходников и реального трафика
+        run: |
+          node scripts/check-syntax.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/check-config.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/check-network.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Сборка и загрузка в черновик
         run: npx electron-builder --win --publish always '-c.publish.releaseType=draft'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Проверка установленного приложения и обновления с 0.3.1
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          ./scripts/check-installed.ps1 -Installer "dist/EVA-VPN-$version-x64.exe"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-acceptance
+          path: dist/acceptance
 
       - uses: actions/upload-artifact@v4
         with:

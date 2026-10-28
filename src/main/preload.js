@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld('eva', {
 
   minimize: () => ipcRenderer.invoke('window:minimize'),
   close: () => ipcRenderer.invoke('window:close'),
+  quit: () => ipcRenderer.invoke('app:quit'),
 
   on: (channel, cb) => {
     const allowed = ['state', 'stats', 'log', 'toast', 'ping', 'selftest', 'update'];

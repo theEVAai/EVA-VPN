@@ -2,6 +2,7 @@ appId: com.theeva.vpn
 productName: EVA VPN
 copyright: theeva.ai
 artifactName: EVA-VPN-${version}-${arch}.${ext}
+beforePack: ./build/before-pack.cjs
 
 directories:
   output: dist

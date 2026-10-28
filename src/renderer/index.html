@@ -111,7 +111,7 @@
     <footer class="footer">
       <div class="keybox" id="keyBox">
         <span class="legend">// ID КЛЮЧА ДОСТУПА</span>
-        <span class="version" id="version">v0.1.0</span>
+        <span class="version" id="version">—</span>
         <span class="keyval" id="keyVal">ключ не добавлен</span>
         <button class="copybtn" id="btnCopy" aria-label="Скопировать">
           <svg viewBox="0 0 24 24">
@@ -468,6 +468,15 @@
     <div class="toast" id="toast"></div>
   </div>
 
+  <aside id="startupError" role="alert" hidden>
+    <h2>Не удалось открыть интерфейс</h2>
+    <p>Перезапустите окно. Если ошибка повторяется, скачайте установщик новой версии из релизов EVA VPN.</p>
+    <p id="startupVersion"></p>
+    <pre id="startupDetails"></pre>
+    <button id="startupReload" type="button">ПЕРЕЗАГРУЗИТЬ ОКНО</button>
+    <button id="startupQuit" type="button">ЗАКРЫТЬ ПРИЛОЖЕНИЕ</button>
+  </aside>
+  <script src="startup.js"></script>
   <script src="i18n.js"></script>
   <script src="domain-routes.js"></script>
   <script src="app.js"></script>

@@ -1056,8 +1056,8 @@ function wire() {
     }
   });
   api.on('toast', ({ text, kind }) => toast(text, kind));
-  api.on('selftest', (t) => {
-    if (t && !t.ok) toast(t('Туннель поднят, но трафик не проходит'), 'err');
+  api.on('selftest', (result) => {
+    if (result && !result.ok) toast(t('Туннель поднят, но трафик не проходит'), 'err');
   });
   api.on('log', () => {
     if (panelStack.includes('panelLogs')) loadLogs();
@@ -1071,4 +1071,5 @@ function wire() {
   wire();
   render(await api.getState());
   firstPaint = false;
+  window.Startup.ready();
 })();

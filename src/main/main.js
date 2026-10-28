@@ -872,6 +872,7 @@ function registerIpc() {
 
   ipcMain.handle('window:minimize', () => win && win.minimize());
   ipcMain.handle('window:close', () => win && win.close());
+  ipcMain.handle('app:quit', () => app.quit());
   ipcMain.handle('clipboard:write', (_e, text) => clipboard.writeText(String(text || '')));
   ipcMain.handle('clipboard:read', () => clipboard.readText());
 }

@@ -2,7 +2,7 @@ name: build
 
 on:
   push:
-    branches: [main]
+    branches: [main, codex/windows-0.7.2]
   pull_request:
   workflow_dispatch:
 
@@ -14,7 +14,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - run: npm ci
@@ -23,7 +23,25 @@ jobs:
         run: node scripts/fetch-core.mjs
 
       - name: Проверка генерации конфига ядром
-        run: node scripts/check-config.mjs
+        run: |
+          node scripts/check-syntax.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/check-config.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/check-network.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Пробная сборка (без публикации)
-        run: npx electron-builder --win --dir
+        run: npx electron-builder --win --publish never
+
+      - name: Проверка установленного приложения и обновления с 0.3.1
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          ./scripts/check-installed.ps1 -Installer "dist/EVA-VPN-$version-x64.exe"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-acceptance
+          path: dist/acceptance
