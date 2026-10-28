@@ -298,6 +298,12 @@ try {
       assert.equal(traffic.status, 200);
       assert.ok(traffic.body.includes('/system-tun-probe'));
       assert.ok(fixture.counts()[2] > before[2], 'System traffic must pass through the TUN and selected key');
+      if (fixture.internet) {
+        const publicPage = await fixture.requestInternet();
+        assert.equal(publicPage.status, 200);
+        assert.ok(publicPage.body.includes('Example Domain'));
+        record('Real DNS and public HTTPS work through the installed Windows TUN');
+      }
       await screenshot('connected-tun');
       await evaluate('window.eva.disconnect()');
       assert.equal((await snapshot()).state, 'stopped');
